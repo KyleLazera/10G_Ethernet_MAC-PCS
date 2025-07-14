@@ -1,5 +1,4 @@
 
-
 module xgmii_encoder_top;
 
     /* Parameters */
@@ -50,46 +49,46 @@ module xgmii_encoder_top;
     initial begin
 
         // Initial Reset for design
-        i_reset_n = 1'b1; 
-        #10; i_reset_n = 1'b1;
-        #10;
+        i_reset_n = 1'b0; #10;
+        @(posedge clk)
+        i_reset_n = 1'b1;
 
         /* Stimulus */
 
         // Test 1: Idle Test Case 
-        @(posedge clk); 
-        xgmii_txd  = 32'h07070707; 
-        xgmii_ctrl = 4'b1111;
+        @(posedge clk);
+        xgmii_txd  <= 32'h07070707; 
+        xgmii_ctrl <= 4'b1111;
 
         // Test 2: Start Condition 
         @(posedge clk);
-        xgmii_txd  = 32'h030201FB;
-        xgmii_ctrl = 4'b0001;      
+        xgmii_txd  <= 32'h030201FB;
+        xgmii_ctrl <= 4'b0001;      
 
         // Test 3: Data Frame
         @(posedge clk);
-        xgmii_txd  = 32'h04030201;
-        xgmii_ctrl = 4'b0000;
+        xgmii_txd  <= 32'h04030201;
+        xgmii_ctrl <= 4'b0000;
 
         // Test 4: Terminate in lane 0 
         @(posedge clk);
-        xgmii_txd  = 32'h070707FD;
-        xgmii_ctrl = 4'b0001; 
+        xgmii_txd  <= 32'h070707FD;
+        xgmii_ctrl <= 4'b0001; 
 
         // Test 5: Terminate in lane 1 
         @(posedge clk);
-        xgmii_txd  = 32'h0707FD07;
-        xgmii_ctrl = 4'b0010; 
+        xgmii_txd  <= 32'h0707FD07;
+        xgmii_ctrl <= 4'b0010; 
 
         // Test 6: Terminate in lane 2 
         @(posedge clk);
-        xgmii_txd  = 32'h07FD0707;
-        xgmii_ctrl = 4'b0100; 
+        xgmii_txd  <= 32'h07FD0707;
+        xgmii_ctrl <= 4'b0100; 
 
         // Test 7: Terminate in lane 3 
         @(posedge clk);
-        xgmii_txd  = 32'hFD070707;
-        xgmii_ctrl = 4'b1000; 
+        xgmii_txd  <= 32'hFD070707;
+        xgmii_ctrl <= 4'b1000; 
 
         #100;
         $finish;

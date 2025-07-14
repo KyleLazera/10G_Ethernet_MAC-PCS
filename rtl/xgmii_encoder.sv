@@ -67,8 +67,8 @@ localparam BLOCK_CTRL = 8'h1E,      // C0 C1 C2 C3 C4 C5 C6 C7
            
 
 /* DataPath Registers */
-logic [(2*DATA_WIDTH)-1:0] xgmii_txd_payload = 'b0; 
-logic [(2*CTRL_WIDTH)-1:0] xgmii_ctrl_payload = 'b0;
+logic [DATA_WIDTH-1:0] xgmii_txd_payload = 'b0; 
+logic [CTRL_WIDTH-1:0] xgmii_ctrl_payload = 'b0;
 logic [DATA_WIDTH-1:0] encoded_data_reg [1:0];
 logic xgmii_pause_reg = 1'b0;
 
@@ -91,59 +91,97 @@ end
 
 // Shift Register logic 
 always_ff@(posedge i_clk) begin
-    xgmii_txd_payload <= {xgmii_txd_payload[DATA_WIDTH-1:0], i_xgmii_txd};
-    xgmii_ctrl_payload <= {xgmii_ctrl_payload[CTRL_WIDTH-1:0], i_xgmii_txc};
+    xgmii_txd_payload <= i_xgmii_txd;
+    xgmii_ctrl_payload <= i_xgmii_txc;
 end
 
 logic [DATA_WIDTH*7/8-1:0] encoded_ctrl_byte [1:0];
-logic idle_frame [1:0];
-logic start_frame [1:0];
-logic data_frame [1:0];
-logic stop_0_frame [1:0];
-logic stop_1_frame [1:0];
-logic stop_2_frame [1:0];
-logic stop_3_frame [1:0];
+logic idle_frame_comb;
+logic start_frame_comb;
+logic data_frame_comb;
+logic stop_0_frame_comb;
+logic stop_1_frame_comb;
+logic stop_2_frame_comb;
+logic stop_3_frame_comb;
+
+
+always_comb begin
+    idle_frame_comb = (i_xgmii_txc == 4'b1111) & (i_xgmii_txd == 32'h07070707);
+    start_frame_comb = (i_xgmii_txc == 4'b0001) & (i_xgmii_txd[7:0] == XGMII_START);
+    data_frame_comb = (i_xgmii_txc == 4'b0000);
+    stop_0_frame_comb = (i_xgmii_txc == 4'b1111) & (i_xgmii_txd == 32'h070707FD);
+    stop_1_frame_comb = (i_xgmii_txc == 4'b1110) & (i_xgmii_txd[31:8] == 24'h070707FD);
+    stop_2_frame_comb = (i_xgmii_txc == 4'b1100) & (i_xgmii_txd[31:16] == 16'h0707FD);
+    stop_3_frame_comb = (i_xgmii_txc == 4'b1000) & (i_xgmii_txd[31:24] == XGMII_TERM);
+end
+
+logic idle_frame_reg = 1'b0;
+logic start_frame_reg = 1'b0;
+logic data_frame_reg = 1'b0;
+logic stop_0_frame_reg = 1'b0;
+logic stop_1_frame_reg = 1'b0;
+logic stop_2_frame_reg = 1'b0;
+logic stop_3_frame_reg = 1'b0;
+
+
+always_ff@(posedge i_clk)  begin
+    idle_frame_reg <= idle_frame_comb;  
+    start_frame_reg <= start_frame_comb; 
+    data_frame_reg <= data_frame_comb;
+    stop_0_frame_reg <= stop_0_frame_comb;
+    stop_1_frame_reg <= stop_1_frame_comb; 
+    stop_2_frame_reg <= stop_2_frame_comb;
+    stop_3_frame_reg <= stop_3_frame_comb; 
+end
+
+logic send_start_lane_0;
+logic send_start_lane_4;
+
+assign send_start_lane_0 = cycle_cntr & data_frame_comb & start_frame_reg;
+assign send_start_lane_4 = cycle_cntr & start_frame_comb & idle_frame_reg;
+
+logic send_start_lane_0_reg;
+logic send_start_lane_4_reg;
+
+
+always_ff@(posedge i_clk) begin
+    send_start_lane_0_reg <= send_start_lane_0;
+    send_start_lane_4_reg <= send_start_lane_4;
+end
 
 integer i;
 
 always_ff@(posedge i_clk) begin
 
-    idle_frame[cycle_cntr] <= (i_xgmii_txc == 4'b1111) & (i_xgmii_txd == 32'h07070707);
-    start_frame[cycle_cntr] <= (i_xgmii_txc == 4'b0001) & (i_xgmii_txd[7:0] == XGMII_START);
-    data_frame[cycle_cntr] <= (i_xgmii_txc == 4'b0000);
-    stop_0_frame[cycle_cntr] <= (i_xgmii_txc == 4'b1111) & (i_xgmii_txd == 32'h070707FD);
-    stop_1_frame[cycle_cntr] <= (i_xgmii_txc == 4'b1110) & (i_xgmii_txd[31:8] == 24'h070707FD);
-    stop_2_frame[cycle_cntr] <= (i_xgmii_txc == 4'b1100) & (i_xgmii_txd[31:16] == 16'h0707FD);
-    stop_3_frame[cycle_cntr] <= (i_xgmii_txc == 4'b1000) & (i_xgmii_txd[31:24] == XGMII_TERM);
-
     for(i = 0; i < CTRL_WIDTH; i++) begin
         if (i_xgmii_txc[i]) begin
             case(i_xgmii_txd[8*i +: 8])
-                XGMII_IDLE:  encoded_ctrl_byte[cycle_cntr][7*i +: 7] <= CTRL_IDLE;
-                XGMII_LPI:   encoded_ctrl_byte[cycle_cntr][7*i +: 7] <= CTRL_LPI;
-                XGMII_ERROR: encoded_ctrl_byte[cycle_cntr][7*i +: 7] <= CTRL_ERROR;
-                XGMII_RES_0: encoded_ctrl_byte[cycle_cntr][7*i +: 7] <= CTRL_RES_0;
-                XGMII_RES_1: encoded_ctrl_byte[cycle_cntr][7*i +: 7] <= CTRL_RES_1;
-                XGMII_RES_2: encoded_ctrl_byte[cycle_cntr][7*i +: 7] <= CTRL_RES_2;
-                XGMII_RES_3: encoded_ctrl_byte[cycle_cntr][7*i +: 7] <= CTRL_RES_3;
-                XGMII_RES_4: encoded_ctrl_byte[cycle_cntr][7*i +: 7] <= CTRL_RES_4;
-                XGMII_RES_5: encoded_ctrl_byte[cycle_cntr][7*i +: 7] <= CTRL_RES_5;
-                default: encoded_ctrl_byte[cycle_cntr][7*i +: 7] <= CTRL_ERROR;
+                XGMII_IDLE:  encoded_ctrl_byte[~cycle_cntr][7*i +: 7] <= CTRL_IDLE;
+                XGMII_LPI:   encoded_ctrl_byte[~cycle_cntr][7*i +: 7] <= CTRL_LPI;
+                XGMII_ERROR: encoded_ctrl_byte[~cycle_cntr][7*i +: 7] <= CTRL_ERROR;
+                XGMII_RES_0: encoded_ctrl_byte[~cycle_cntr][7*i +: 7] <= CTRL_RES_0;
+                XGMII_RES_1: encoded_ctrl_byte[~cycle_cntr][7*i +: 7] <= CTRL_RES_1;
+                XGMII_RES_2: encoded_ctrl_byte[~cycle_cntr][7*i +: 7] <= CTRL_RES_2;
+                XGMII_RES_3: encoded_ctrl_byte[~cycle_cntr][7*i +: 7] <= CTRL_RES_3;
+                XGMII_RES_4: encoded_ctrl_byte[~cycle_cntr][7*i +: 7] <= CTRL_RES_4;
+                XGMII_RES_5: encoded_ctrl_byte[~cycle_cntr][7*i +: 7] <= CTRL_RES_5;
+                default: encoded_ctrl_byte[~cycle_cntr][7*i +: 7] <= CTRL_ERROR;
             endcase
         end
     end
 end
 
+logic [DATA_WIDTH-1:0] encoded_word [1:0];
+
 always_ff@(posedge i_clk) begin
 
-    encoded_data_reg[0] <=  (idle_frame[0]) ? {encoded_ctrl_byte[0], BLOCK_CTRL} :
-                            (start_frame[0]) ? {xgmii_txd_payload[63:40], BLOCK_START_0} :
-                            (data_frame[0]) ? xgmii_txd_payload[63:32] :
-                            (stop_0_frame[0]) ? {encoded_ctrl_byte[0], BLOCK_TERM_0} :
-                            (stop_1_frame[0]) ? {encoded_ctrl_byte[0][27:8], xgmii_txd_payload[63:56], BLOCK_TERM_1} :
-                            (stop_2_frame[0]) ? {encoded_ctrl_byte[0][19:0], xgmii_txd_payload[63:48], BLOCK_TERM_2} :
-                            (stop_3_frame[0]) ? {encoded_ctrl_byte[0][11:0], xgmii_txd_payload[63:40], BLOCK_TERM_3} :
-                            32'h0000;
+    encoded_word[0] <=  (send_start_lane_0) ? {i_xgmii_txd[31:8], BLOCK_START_0} :
+                        (send_start_lane_0_reg) ? {i_xgmii_txd} :
+                        (send_start_lane_4) ? {24'h0, BLOCK_START_4} :
+                        (send_start_lane_4_reg) ? {i_xgmii_txd[31:8], 8'h0} :
+                        32'h0;
+
+
 end
 
 endmodule
