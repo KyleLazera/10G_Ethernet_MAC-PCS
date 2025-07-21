@@ -1,4 +1,9 @@
 
+`include "xgmii_encoder_pkg.sv"
+`include "xgmii_if.sv"
+
+import xgmii_encoder_pkg::*;
+
 module xgmii_encoder_top;
 
     /* Parameters */
@@ -9,15 +14,9 @@ module xgmii_encoder_top;
     /* Signal Descriptions */
     logic clk;
     logic i_reset_n;
-    // XGMII Signals
-    logic [DATA_WIDTH-1:0] xgmii_txd;
-    logic [CTRL_WIDTH-1:0] xgmii_ctrl;
-    logic xgmii_pause;
-    // Encoder output signals
-    logic [DATA_WIDTH-1:0] encoded_data;
-    logic [HDR_WIDTH-1:0] header;
-    logic encoding_err;
 
+    /* Interface declaration */
+    xgmii_if xgmii(clk, i_reset_n) ;
 
     /* DUT Instantiation */
     xgmii_encoder#( 
@@ -28,13 +27,16 @@ module xgmii_encoder_top;
         .i_clk(clk),
         .i_reset_n(i_reset_n),
         // XGMII Interface
-        .i_xgmii_txd(xgmii_txd),
-        .i_xgmii_txc(xgmii_ctrl),
-        .o_xgmii_pause(xgmii_pause),
+        .i_xgmii_txd(xgmii.i_xgmii_txd),
+        .i_xgmii_txc(xgmii.i_xgmii_txc),
+        .i_xgmii_valid(xgmii.i_xgmii_valid),
+        .o_xgmii_pause(xgmii.o_xgmii_pause),
         // Scrambler Interface/Encoder Output
-        .o_encoded_data(encoded_data),
-        .o_sync_hdr(header),
-        .o_encoding_err(encoding_err)
+        .i_scrambler_trdy(xgmii.i_scrambler_trdy),
+        .o_encoded_data_valid(xgmii.o_encoded_data_valid),
+        .o_encoded_data(xgmii.o_encoded_data),
+        .o_sync_hdr(xgmii.o_sync_hdr),
+        .o_encoding_err(xgmii.o_encoding_err)
     );
 
     /* Clock Instantiation */
@@ -48,6 +50,10 @@ module xgmii_encoder_top;
     /* Stimulus/Test */
     initial begin
 
+        logic [63:0] data_word;
+        logic [7:0] ctrl_word;
+        logic [65:0] expected_data;
+
         // Initial Reset for design
         i_reset_n = 1'b0; #10;
         @(posedge clk)
@@ -55,40 +61,82 @@ module xgmii_encoder_top;
 
         /* Stimulus */
 
-        // Test 1: Idle Test Case 
+        /* Test 1: Start Condition - Lane 4 & Term Lane 0 */
+        data_word = 64'h030201FB07070707;
+        ctrl_word = 8'b00011111;
+        expected_data = encode_data(data_word, ctrl_word);
+        xgmii.drive_xgmii_data(data_word, ctrl_word);
+        
+        /*@(posedge clk);
+        xgmii_txd  <= data_word[31:0]; 
+        xgmii_ctrl <= ctrl_word[3:0];
         @(posedge clk);
-        xgmii_txd  <= 32'h07070707; 
-        xgmii_ctrl <= 4'b1111;
+        xgmii_txd  <= data_word[63:32];
+        xgmii_ctrl <= ctrl_word[7:4];*/    
 
-        // Test 2: Start Condition 
+        // Data
+        //@(posedge clk);
+        xgmii.i_xgmii_txd  <= 32'h04030201;
+        xgmii.i_xgmii_txc <= 4'b0000;
         @(posedge clk);
-        xgmii_txd  <= 32'h030201FB;
-        xgmii_ctrl <= 4'b0001;      
+        xgmii.i_xgmii_txd  <= 32'h08070605;
+        xgmii.i_xgmii_txc <= 4'b0000;        
 
-        // Test 3: Data Frame
+        // Term Lane 0
         @(posedge clk);
-        xgmii_txd  <= 32'h04030201;
-        xgmii_ctrl <= 4'b0000;
+        xgmii.i_xgmii_txd  <= 32'h070707FD;
+        xgmii.i_xgmii_txc <= 4'b1111; 
+        @(posedge clk);
+        xgmii.i_xgmii_txd  <= 32'h07070707;
+        xgmii.i_xgmii_txc <= 4'b1111;    
 
-        // Test 4: Terminate in lane 0 
+        /* Test 2: Start Condition in Lane 0 & Term in Lane 1 */
         @(posedge clk);
-        xgmii_txd  <= 32'h070707FD;
-        xgmii_ctrl <= 4'b0001; 
+        xgmii.i_xgmii_txd  <= 32'h0C0B0AFB;
+        xgmii.i_xgmii_txc <= 4'b0001; 
+        @(posedge clk);
+        xgmii.i_xgmii_txd  <= 32'h20100E0D;
+        xgmii.i_xgmii_txc <= 4'b0000;      
 
-        // Test 5: Terminate in lane 1 
+        // Data Frame
         @(posedge clk);
-        xgmii_txd  <= 32'h0707FD07;
-        xgmii_ctrl <= 4'b0010; 
+        xgmii.i_xgmii_txd  <= 32'h04030201;
+        xgmii.i_xgmii_txc <= 4'b0000;
+        @(posedge clk);
+        xgmii.i_xgmii_txd  <= 32'h08070605;
+        xgmii.i_xgmii_txc <= 4'b0000;   
 
-        // Test 6: Terminate in lane 2 
+        // Terminate in Lane 1
         @(posedge clk);
-        xgmii_txd  <= 32'h07FD0707;
-        xgmii_ctrl <= 4'b0100; 
+        xgmii.i_xgmii_txd  <= 32'h0707FDAA;
+        xgmii.i_xgmii_txc <= 4'b1110; 
+        @(posedge clk);
+        xgmii.i_xgmii_txd  <= 32'h07070707;
+        xgmii.i_xgmii_txc <= 4'b1111;  
 
-        // Test 7: Terminate in lane 3 
+        /* Test 3: Start Condition in Lane 0 & Term in Lane 4 */
         @(posedge clk);
-        xgmii_txd  <= 32'hFD070707;
-        xgmii_ctrl <= 4'b1000; 
+        xgmii.i_xgmii_txd  <= 32'h0C0B0AFB;
+        xgmii.i_xgmii_txc <= 4'b0001; 
+        @(posedge clk);
+        xgmii.i_xgmii_txd  <= 32'h20100E0D;
+        xgmii.i_xgmii_txc <= 4'b0000;      
+
+        // Test 5: Data Frame
+        @(posedge clk);
+        xgmii.i_xgmii_txd  <= 32'h04030201;
+        xgmii.i_xgmii_txc <= 4'b0000;
+        @(posedge clk);
+        xgmii.i_xgmii_txd  <= 32'h08070605;
+        xgmii.i_xgmii_txc <= 4'b0000;   
+
+        // Test 6: Terminate in Lane 4
+        @(posedge clk);
+        xgmii.i_xgmii_txd  <= 32'hDDCCBBAA;
+        xgmii.i_xgmii_txc <= 4'b0000; 
+        @(posedge clk);
+        xgmii.i_xgmii_txd  <= 32'h070707FD;
+        xgmii.i_xgmii_txc <= 4'b1111;          
 
         #100;
         $finish;

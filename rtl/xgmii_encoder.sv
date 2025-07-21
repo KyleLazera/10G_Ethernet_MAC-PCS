@@ -14,9 +14,12 @@ module xgmii_encoder
     // MAC to PCS (XGMII) Interface
     input logic [DATA_WIDTH-1:0] i_xgmii_txd,
     input logic [CTRL_WIDTH-1:0] i_xgmii_txc,
+    input logic i_xgmii_valid,
     output logic o_xgmii_pause,
 
     // 64b/66b Encoder to Scrambler Interface
+    input logic i_scrambler_trdy,
+    output logic o_encoded_data_valid,
     output logic [DATA_WIDTH-1:0] o_encoded_data,
     output logic [HDR_WIDTH-1:0] o_sync_hdr,
     output logic o_encoding_err
@@ -66,11 +69,9 @@ localparam BLOCK_CTRL = 8'h1E,      // C0 C1 C2 C3 C4 C5 C6 C7
            BLOCK_TERM_7 = 8'hFF;    // D0 D1 D2 D3 D4 D5 D6 77   
            
 
-/* DataPath Registers */
-logic [DATA_WIDTH-1:0] xgmii_txd_payload = 'b0; 
-logic [CTRL_WIDTH-1:0] xgmii_ctrl_payload = 'b0;
-logic [DATA_WIDTH-1:0] encoded_data_reg [1:0];
-logic xgmii_pause_reg = 1'b0;
+/* Data Path Registers */
+logic [DATA_WIDTH-1:0] xgmii_txd_payload [1:0]; 
+logic [CTRL_WIDTH-1:0] xgmii_ctrl_payload;
 
 /* Control Registers */
 logic cycle_cntr = 1'b0;
@@ -85,15 +86,23 @@ logic cycle_cntr = 1'b0;
 always_ff@(posedge i_clk) begin
     if(!i_reset_n)
         cycle_cntr <= 1'b0;
-    else
+    else if (i_xgmii_valid)
         cycle_cntr <= ~cycle_cntr;
 end
 
 // Shift Register logic 
 always_ff@(posedge i_clk) begin
-    xgmii_txd_payload <= i_xgmii_txd;
     xgmii_ctrl_payload <= i_xgmii_txc;
+
+    xgmii_txd_payload[0] <= i_xgmii_txd;
+    xgmii_txd_payload[1] <= xgmii_txd_payload[0];
 end
+
+logic [1:0] sync_hdr_reg = 2'b0;
+
+always_ff @(posedge i_clk)
+    if (cycle_cntr)
+        sync_hdr_reg <= (|{xgmii_ctrl_payload, i_xgmii_txc}) ? 2'b10 : 2'b01;
 
 logic [DATA_WIDTH*7/8-1:0] encoded_ctrl_byte [1:0];
 logic idle_frame_comb;
@@ -104,14 +113,18 @@ logic stop_1_frame_comb;
 logic stop_2_frame_comb;
 logic stop_3_frame_comb;
 
-
+//////////////////////////////////////////////////////////////////////////
+// To improve latency of this module, the incoming words are decoded prior
+// to being latched. This allows us to determine the block type field of each
+// 64 bit block after latching only the first xgmii word.
+//////////////////////////////////////////////////////////////////////////
 always_comb begin
     idle_frame_comb = (i_xgmii_txc == 4'b1111) & (i_xgmii_txd == 32'h07070707);
     start_frame_comb = (i_xgmii_txc == 4'b0001) & (i_xgmii_txd[7:0] == XGMII_START);
     data_frame_comb = (i_xgmii_txc == 4'b0000);
     stop_0_frame_comb = (i_xgmii_txc == 4'b1111) & (i_xgmii_txd == 32'h070707FD);
-    stop_1_frame_comb = (i_xgmii_txc == 4'b1110) & (i_xgmii_txd[31:8] == 24'h070707FD);
-    stop_2_frame_comb = (i_xgmii_txc == 4'b1100) & (i_xgmii_txd[31:16] == 16'h0707FD);
+    stop_1_frame_comb = (i_xgmii_txc == 4'b1110) & (i_xgmii_txd[31:8] == 24'h0707FD);
+    stop_2_frame_comb = (i_xgmii_txc == 4'b1100) & (i_xgmii_txd[31:16] == 16'h07FD);
     stop_3_frame_comb = (i_xgmii_txc == 4'b1000) & (i_xgmii_txd[31:24] == XGMII_TERM);
 end
 
@@ -136,17 +149,49 @@ end
 
 logic send_start_lane_0;
 logic send_start_lane_4;
+logic send_term_lane_0;
+logic send_term_lane_1;
+logic send_term_lane_2;
+logic send_term_lane_3;
+logic send_term_lane_4;
+logic send_term_lane_5;
+logic send_term_lane_6;
+logic send_term_lane_7;
 
 assign send_start_lane_0 = cycle_cntr & data_frame_comb & start_frame_reg;
 assign send_start_lane_4 = cycle_cntr & start_frame_comb & idle_frame_reg;
+assign send_term_lane_0 = cycle_cntr & idle_frame_comb & stop_0_frame_reg;
+assign send_term_lane_1 = cycle_cntr & idle_frame_comb & stop_1_frame_reg;
+assign send_term_lane_2 = cycle_cntr & idle_frame_comb & stop_2_frame_reg;
+assign send_term_lane_3 = cycle_cntr & idle_frame_comb & stop_3_frame_reg;
+assign send_term_lane_4 = cycle_cntr & stop_0_frame_comb & data_frame_reg;
+assign send_term_lane_5 = cycle_cntr & stop_1_frame_comb & data_frame_reg;
+assign send_term_lane_6 = cycle_cntr & stop_2_frame_comb & data_frame_reg;
+assign send_term_lane_7 = cycle_cntr & stop_3_frame_comb & data_frame_reg;
 
 logic send_start_lane_0_reg;
 logic send_start_lane_4_reg;
+logic send_term_lane_0_reg;
+logic send_term_lane_1_reg;
+logic send_term_lane_2_reg;
+logic send_term_lane_3_reg;
+logic send_term_lane_4_reg;
+logic send_term_lane_5_reg;
+logic send_term_lane_6_reg;
+logic send_term_lane_7_reg;
 
 
 always_ff@(posedge i_clk) begin
     send_start_lane_0_reg <= send_start_lane_0;
     send_start_lane_4_reg <= send_start_lane_4;
+    send_term_lane_0_reg <= send_term_lane_0;
+    send_term_lane_1_reg <= send_term_lane_1;
+    send_term_lane_2_reg <= send_term_lane_2;
+    send_term_lane_3_reg <= send_term_lane_3;
+    send_term_lane_4_reg <= send_term_lane_4;
+    send_term_lane_5_reg <= send_term_lane_5;
+    send_term_lane_6_reg <= send_term_lane_6;
+    send_term_lane_7_reg <= send_term_lane_7;
 end
 
 integer i;
@@ -172,16 +217,43 @@ always_ff@(posedge i_clk) begin
 end
 
 logic [DATA_WIDTH-1:0] encoded_word [1:0];
+logic encoded_word_select [1:0];
 
 always_ff@(posedge i_clk) begin
 
-    encoded_word[0] <=  (send_start_lane_0) ? {i_xgmii_txd[31:8], BLOCK_START_0} :
-                        (send_start_lane_0_reg) ? {i_xgmii_txd} :
+                        
+    encoded_word[0] <=  (send_start_lane_0) ? {xgmii_txd_payload[0][31:8], BLOCK_START_0} :
+                        (send_start_lane_0_reg) ? xgmii_txd_payload[0] :                      
                         (send_start_lane_4) ? {24'h0, BLOCK_START_4} :
-                        (send_start_lane_4_reg) ? {i_xgmii_txd[31:8], 8'h0} :
+                        (send_start_lane_4_reg) ? {xgmii_txd_payload[0][31:8], 8'h0} :
+                        (send_term_lane_0) ? {24'h0, BLOCK_TERM_0} :
+                        (send_term_lane_1) ? {16'h0, xgmii_txd_payload[0][7:0], BLOCK_TERM_1} :
+                        (send_term_lane_2) ? {8'h0, xgmii_txd_payload[0][15:0], BLOCK_TERM_2} :
+                        (send_term_lane_3) ? {xgmii_txd_payload[0][23:0], BLOCK_TERM_3} :
+                        (data_frame_reg) ? xgmii_txd_payload[0] :                                                
                         32'h0;
+
+    encoded_word[1] <=  (send_term_lane_4) ? {xgmii_txd_payload[0][23:0], BLOCK_TERM_4} :
+                        (send_term_lane_4_reg) ? {24'h0, xgmii_txd_payload[1][31:24]} :
+                        (send_term_lane_5) ? {xgmii_txd_payload[0][23:0], BLOCK_TERM_5} :
+                        (send_term_lane_5_reg) ? {16'h0, xgmii_txd_payload[1][31:16]} :
+                        (send_term_lane_6) ? {xgmii_txd_payload[0][23:0], BLOCK_TERM_6} :
+                        (send_term_lane_6_reg) ? {8'h0, xgmii_txd_payload[1][31:8]} :
+                        (send_term_lane_7) ? {xgmii_txd_payload[0][23:0], BLOCK_TERM_7} :
+                        (send_term_lane_7_reg) ? xgmii_txd_payload[1] :
+                        xgmii_txd_payload[0];
+
+
+    encoded_word_select[0] <= send_start_lane_0 | send_start_lane_0_reg | send_start_lane_4 | send_start_lane_4_reg |
+                            send_term_lane_0 | send_term_lane_1 | send_term_lane_2 | send_term_lane_3 | data_frame_reg;
+
+    encoded_word_select[1] <= send_term_lane_4 | send_term_lane_4_reg | send_term_lane_5 | send_term_lane_5_reg | 
+                                send_term_lane_6 | send_term_lane_6_reg | send_term_lane_7 | send_term_lane_7_reg;                              
 
 
 end
+
+assign o_encoded_data = encoded_word_select[0] ? encoded_word[0] : encoded_word[1];
+assign o_sync_hdr = sync_hdr_reg;
 
 endmodule
