@@ -45,6 +45,11 @@ package xgmii_encoder_pkg;
                BLOCK_TERM_6 = 8'hE1,    
                BLOCK_TERM_7 = 8'hFF; 
 
+    typedef struct packed {
+        logic [63:0] data_word;
+        logic [7:0]  ctrl_word;
+    } xgmii_frame_t;
+
 
     /* This function is used to encode a 64 bit word using the 64b/66b encoding procedure 
      * outlined in IEEE 802.3-2012 Section 49.2. It takes in a 64 bit word, determines the 

@@ -17,6 +17,17 @@ module xgmii_encoder_top;
 
     /* Interface declaration */
     xgmii_if xgmii(clk, i_reset_n) ;
+    xgmii_frame_t test_queue[$];
+
+    initial begin
+        test_queue.push_back('{64'h030201FB07070707, 8'b00011111}); // Test 1
+        test_queue.push_back('{64'h0C0B0AFB20100E0D, 8'b00000001}); // Test 2
+        test_queue.push_back('{64'h0403020108070605, 8'b00000000}); // Test 3
+        test_queue.push_back('{64'h0707FDAA07070707, 8'b11111110}); // Test 4
+        test_queue.push_back('{64'h0C0B0AFB20100E0D, 8'b00000001}); // Test 5
+        test_queue.push_back('{64'h0403020108070605, 8'b00000000}); // Test 6
+        test_queue.push_back('{64'hDDCCBBAA070707FD, 8'b00001111}); // Test 7
+    end
 
     /* DUT Instantiation */
     xgmii_encoder#( 
@@ -53,6 +64,7 @@ module xgmii_encoder_top;
         logic [63:0] data_word;
         logic [7:0] ctrl_word;
         logic [65:0] expected_data;
+        logic [65:0] actual_data;
 
         // Initial Reset for design
         i_reset_n = 1'b0; #10;
@@ -61,82 +73,25 @@ module xgmii_encoder_top;
 
         /* Stimulus */
 
-        /* Test 1: Start Condition - Lane 4 & Term Lane 0 */
-        data_word = 64'h030201FB07070707;
-        ctrl_word = 8'b00011111;
-        expected_data = encode_data(data_word, ctrl_word);
-        xgmii.drive_xgmii_data(data_word, ctrl_word);
-        
-        /*@(posedge clk);
-        xgmii_txd  <= data_word[31:0]; 
-        xgmii_ctrl <= ctrl_word[3:0];
-        @(posedge clk);
-        xgmii_txd  <= data_word[63:32];
-        xgmii_ctrl <= ctrl_word[7:4];*/    
+        fork 
+            begin
+                foreach(test_queue[i]) begin
+                    expected_data = encode_data(test_queue[i].data_word, test_queue[i].ctrl_word);
+                    $display("Expected Data: %0h", expected_data);
+                    xgmii.drive_xgmii_data(test_queue[i].data_word, test_queue[i].ctrl_word);
+                end
+            end
+            begin
+                forever begin
+                    xgmii.sample_encoded_data(actual_data);
 
-        // Data
-        //@(posedge clk);
-        xgmii.i_xgmii_txd  <= 32'h04030201;
-        xgmii.i_xgmii_txc <= 4'b0000;
-        @(posedge clk);
-        xgmii.i_xgmii_txd  <= 32'h08070605;
-        xgmii.i_xgmii_txc <= 4'b0000;        
-
-        // Term Lane 0
-        @(posedge clk);
-        xgmii.i_xgmii_txd  <= 32'h070707FD;
-        xgmii.i_xgmii_txc <= 4'b1111; 
-        @(posedge clk);
-        xgmii.i_xgmii_txd  <= 32'h07070707;
-        xgmii.i_xgmii_txc <= 4'b1111;    
-
-        /* Test 2: Start Condition in Lane 0 & Term in Lane 1 */
-        @(posedge clk);
-        xgmii.i_xgmii_txd  <= 32'h0C0B0AFB;
-        xgmii.i_xgmii_txc <= 4'b0001; 
-        @(posedge clk);
-        xgmii.i_xgmii_txd  <= 32'h20100E0D;
-        xgmii.i_xgmii_txc <= 4'b0000;      
-
-        // Data Frame
-        @(posedge clk);
-        xgmii.i_xgmii_txd  <= 32'h04030201;
-        xgmii.i_xgmii_txc <= 4'b0000;
-        @(posedge clk);
-        xgmii.i_xgmii_txd  <= 32'h08070605;
-        xgmii.i_xgmii_txc <= 4'b0000;   
-
-        // Terminate in Lane 1
-        @(posedge clk);
-        xgmii.i_xgmii_txd  <= 32'h0707FDAA;
-        xgmii.i_xgmii_txc <= 4'b1110; 
-        @(posedge clk);
-        xgmii.i_xgmii_txd  <= 32'h07070707;
-        xgmii.i_xgmii_txc <= 4'b1111;  
-
-        /* Test 3: Start Condition in Lane 0 & Term in Lane 4 */
-        @(posedge clk);
-        xgmii.i_xgmii_txd  <= 32'h0C0B0AFB;
-        xgmii.i_xgmii_txc <= 4'b0001; 
-        @(posedge clk);
-        xgmii.i_xgmii_txd  <= 32'h20100E0D;
-        xgmii.i_xgmii_txc <= 4'b0000;      
-
-        // Test 5: Data Frame
-        @(posedge clk);
-        xgmii.i_xgmii_txd  <= 32'h04030201;
-        xgmii.i_xgmii_txc <= 4'b0000;
-        @(posedge clk);
-        xgmii.i_xgmii_txd  <= 32'h08070605;
-        xgmii.i_xgmii_txc <= 4'b0000;   
-
-        // Test 6: Terminate in Lane 4
-        @(posedge clk);
-        xgmii.i_xgmii_txd  <= 32'hDDCCBBAA;
-        xgmii.i_xgmii_txc <= 4'b0000; 
-        @(posedge clk);
-        xgmii.i_xgmii_txd  <= 32'h070707FD;
-        xgmii.i_xgmii_txc <= 4'b1111;          
+                    assert (actual_data == expected_data)
+                        else begin
+                            $display("Assertion failed! Expected: %0d, Actual: %0d", expected_data, actual_data);
+                    end
+                end
+            end
+        join_any  
 
         #100;
         $finish;

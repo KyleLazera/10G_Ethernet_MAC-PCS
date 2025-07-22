@@ -24,25 +24,38 @@ interface xgmii_if
 
 
     task drive_xgmii_data(logic[63:0] input_word, logic[7:0] input_ctrl);
-
         int i;
 
-        // Set data valid
-        i_xgmii_valid <= 1'b1;
-        //@(posedge i_clk);
-
         for(i = 0; i < 2; i++) begin
-            //if (!o_xgmii_pause) begin
-            // Drive data onto input signals 
-            i_xgmii_txd <= input_word[(32*(i+1))-1 -: 32];
-            i_xgmii_txc <= input_ctrl[(4*(i+1))-1 -: 4];
-            //end
+            i_xgmii_valid <= 1'b1;
+            i_xgmii_txd   <= input_word[(32*(i+1))-1 -: 32];
+            i_xgmii_txc   <= input_ctrl[(4*(i+1))-1 -: 4];
             @(posedge i_clk);
         end
 
-    endtask : drive_xgmii_data
+    endtask
 
+    task sample_encoded_data(output logic [65:0] encoded_data);
+        int i;
 
+        i_scrambler_trdy <= 1'b1;
+
+        // Wait for the data valid signal
+        while (!o_encoded_data_valid) 
+            @(posedge i_clk);  
+
+        // Sample two 32-bit chunks
+        for (i = 0; i < 2; i++) begin
+
+            encoded_data[(32*(i+1))-1 -: 32] <= o_encoded_data;
+
+            // Only assign sync header once (from the first word)
+            if (i == 0)
+                encoded_data[65:64] <= o_sync_hdr;
+
+            @(posedge i_clk);
+        end
+    endtask : sample_encoded_data
 
 
 endinterface : xgmii_if

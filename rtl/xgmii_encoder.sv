@@ -147,6 +147,7 @@ always_ff@(posedge i_clk)  begin
     stop_3_frame_reg <= stop_3_frame_comb; 
 end
 
+logic encoded_data_valid;
 logic send_start_lane_0;
 logic send_start_lane_4;
 logic send_term_lane_0;
@@ -158,6 +159,7 @@ logic send_term_lane_5;
 logic send_term_lane_6;
 logic send_term_lane_7;
 
+assign encoded_data_valid = cycle_cntr & i_xgmii_valid;
 assign send_start_lane_0 = cycle_cntr & data_frame_comb & start_frame_reg;
 assign send_start_lane_4 = cycle_cntr & start_frame_comb & idle_frame_reg;
 assign send_term_lane_0 = cycle_cntr & idle_frame_comb & stop_0_frame_reg;
@@ -169,19 +171,21 @@ assign send_term_lane_5 = cycle_cntr & stop_1_frame_comb & data_frame_reg;
 assign send_term_lane_6 = cycle_cntr & stop_2_frame_comb & data_frame_reg;
 assign send_term_lane_7 = cycle_cntr & stop_3_frame_comb & data_frame_reg;
 
-logic send_start_lane_0_reg;
-logic send_start_lane_4_reg;
-logic send_term_lane_0_reg;
-logic send_term_lane_1_reg;
-logic send_term_lane_2_reg;
-logic send_term_lane_3_reg;
-logic send_term_lane_4_reg;
-logic send_term_lane_5_reg;
-logic send_term_lane_6_reg;
-logic send_term_lane_7_reg;
+logic encoded_data_valid_reg = 1'b0;
+logic send_start_lane_0_reg = 1'b0;
+logic send_start_lane_4_reg = 1'b0;
+logic send_term_lane_0_reg = 1'b0;
+logic send_term_lane_1_reg = 1'b0;
+logic send_term_lane_2_reg = 1'b0;
+logic send_term_lane_3_reg = 1'b0;
+logic send_term_lane_4_reg = 1'b0;
+logic send_term_lane_5_reg = 1'b0;
+logic send_term_lane_6_reg = 1'b0;
+logic send_term_lane_7_reg = 1'b0;
 
 
 always_ff@(posedge i_clk) begin
+    encoded_data_valid_reg <= encoded_data_valid;
     send_start_lane_0_reg <= send_start_lane_0;
     send_start_lane_4_reg <= send_start_lane_4;
     send_term_lane_0_reg <= send_term_lane_0;
@@ -218,8 +222,11 @@ end
 
 logic [DATA_WIDTH-1:0] encoded_word [1:0];
 logic encoded_word_select [1:0];
+logic data_valid = 1'b0;
 
 always_ff@(posedge i_clk) begin
+
+    data_valid <= encoded_data_valid_reg | encoded_data_valid;
 
                         
     encoded_word[0] <=  (send_start_lane_0) ? {xgmii_txd_payload[0][31:8], BLOCK_START_0} :
@@ -255,5 +262,6 @@ end
 
 assign o_encoded_data = encoded_word_select[0] ? encoded_word[0] : encoded_word[1];
 assign o_sync_hdr = sync_hdr_reg;
+assign o_encoded_data_valid = data_valid;
 
 endmodule
