@@ -198,28 +198,6 @@ always_ff@(posedge i_clk) begin
     send_term_lane_7_reg <= send_term_lane_7;
 end
 
-integer i;
-
-always_ff@(posedge i_clk) begin
-
-    for(i = 0; i < CTRL_WIDTH; i++) begin
-        if (i_xgmii_txc[i]) begin
-            case(i_xgmii_txd[8*i +: 8])
-                XGMII_IDLE:  encoded_ctrl_byte[~cycle_cntr][7*i +: 7] <= CTRL_IDLE;
-                XGMII_LPI:   encoded_ctrl_byte[~cycle_cntr][7*i +: 7] <= CTRL_LPI;
-                XGMII_ERROR: encoded_ctrl_byte[~cycle_cntr][7*i +: 7] <= CTRL_ERROR;
-                XGMII_RES_0: encoded_ctrl_byte[~cycle_cntr][7*i +: 7] <= CTRL_RES_0;
-                XGMII_RES_1: encoded_ctrl_byte[~cycle_cntr][7*i +: 7] <= CTRL_RES_1;
-                XGMII_RES_2: encoded_ctrl_byte[~cycle_cntr][7*i +: 7] <= CTRL_RES_2;
-                XGMII_RES_3: encoded_ctrl_byte[~cycle_cntr][7*i +: 7] <= CTRL_RES_3;
-                XGMII_RES_4: encoded_ctrl_byte[~cycle_cntr][7*i +: 7] <= CTRL_RES_4;
-                XGMII_RES_5: encoded_ctrl_byte[~cycle_cntr][7*i +: 7] <= CTRL_RES_5;
-                default: encoded_ctrl_byte[~cycle_cntr][7*i +: 7] <= CTRL_ERROR;
-            endcase
-        end
-    end
-end
-
 logic [DATA_WIDTH-1:0] encoded_word [1:0];
 logic encoded_word_select [1:0];
 logic data_valid = 1'b0;
@@ -237,7 +215,7 @@ always_ff@(posedge i_clk) begin
                         (send_term_lane_1) ? {16'h0, xgmii_txd_payload[0][7:0], BLOCK_TERM_1} :
                         (send_term_lane_2) ? {8'h0, xgmii_txd_payload[0][15:0], BLOCK_TERM_2} :
                         (send_term_lane_3) ? {xgmii_txd_payload[0][23:0], BLOCK_TERM_3} :
-                        (data_frame_reg) ? xgmii_txd_payload[0] :                                                
+                        (data_frame_reg) ? xgmii_txd_payload[0]                                         
                         32'h0;
 
     encoded_word[1] <=  (send_term_lane_4) ? {xgmii_txd_payload[0][23:0], BLOCK_TERM_4} :
@@ -248,14 +226,14 @@ always_ff@(posedge i_clk) begin
                         (send_term_lane_6_reg) ? {8'h0, xgmii_txd_payload[1][31:8]} :
                         (send_term_lane_7) ? {xgmii_txd_payload[0][23:0], BLOCK_TERM_7} :
                         (send_term_lane_7_reg) ? xgmii_txd_payload[1] :
-                        xgmii_txd_payload[0];
+                        32'h0;
 
 
     encoded_word_select[0] <= send_start_lane_0 | send_start_lane_0_reg | send_start_lane_4 | send_start_lane_4_reg |
                             send_term_lane_0 | send_term_lane_1 | send_term_lane_2 | send_term_lane_3 | data_frame_reg;
 
     encoded_word_select[1] <= send_term_lane_4 | send_term_lane_4_reg | send_term_lane_5 | send_term_lane_5_reg | 
-                                send_term_lane_6 | send_term_lane_6_reg | send_term_lane_7 | send_term_lane_7_reg;                              
+                                send_term_lane_6 | send_term_lane_6_reg | send_term_lane_7 | send_term_lane_7_reg;                             
 
 
 end

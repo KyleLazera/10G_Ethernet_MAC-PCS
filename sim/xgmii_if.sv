@@ -48,6 +48,7 @@ interface xgmii_if
         for (i = 0; i < 2; i++) begin
 
             encoded_data[(32*(i+1))-1 -: 32] <= o_encoded_data;
+            $display("Encoded Data: %h", o_encoded_data);
 
             // Only assign sync header once (from the first word)
             if (i == 0)
@@ -55,6 +56,7 @@ interface xgmii_if
 
             @(posedge i_clk);
         end
+        $display("Encoded Word: %h", encoded_data);
     endtask : sample_encoded_data
 
 

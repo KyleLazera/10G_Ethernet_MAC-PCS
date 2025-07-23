@@ -17,16 +17,23 @@ module xgmii_encoder_top;
 
     /* Interface declaration */
     xgmii_if xgmii(clk, i_reset_n) ;
-    xgmii_frame_t test_queue[$];
+    xgmii_frame_t tx_queue[$], rx_queue[$];
 
     initial begin
-        test_queue.push_back('{64'h030201FB07070707, 8'b00011111}); // Test 1
-        test_queue.push_back('{64'h0C0B0AFB20100E0D, 8'b00000001}); // Test 2
-        test_queue.push_back('{64'h0403020108070605, 8'b00000000}); // Test 3
-        test_queue.push_back('{64'h0707FDAA07070707, 8'b11111110}); // Test 4
-        test_queue.push_back('{64'h0C0B0AFB20100E0D, 8'b00000001}); // Test 5
-        test_queue.push_back('{64'h0403020108070605, 8'b00000000}); // Test 6
-        test_queue.push_back('{64'hDDCCBBAA070707FD, 8'b00001111}); // Test 7
+        /* Frame 1: Idle followed by start condition in lane 4 */
+        tx_queue.push_back('{64'h030201FB07070707, 8'b00011111}); 
+        /* Frame 2: Data Frame */
+        tx_queue.push_back('{64'h0807060504030201, 8'b00000000}); 
+        /* Frame 3: Terminate in Lane 0 followed by idle */
+        tx_queue.push_back('{64'h07070707070707FD, 8'b11111111}); 
+        /* Frame 4: Start condition in lane 1 & data */
+        tx_queue.push_back('{64'h20100E0D0C0B0AFB, 8'b00000001}); 
+        /* Frame 5: Data Frame */
+        tx_queue.push_back('{64'h0807060504030201, 8'b00000000}); 
+        /* Frame 6: Terminate in Lane 7 */
+        tx_queue.push_back('{64'hFD2211EEDDCCBBAA, 8'b10000000}); 
+        /* Frame 7: Idle */
+        tx_queue.push_back('{64'h0707070707070707, 8'b11111111}); 
     end
 
     /* DUT Instantiation */
@@ -61,11 +68,6 @@ module xgmii_encoder_top;
     /* Stimulus/Test */
     initial begin
 
-        logic [63:0] data_word;
-        logic [7:0] ctrl_word;
-        logic [65:0] expected_data;
-        logic [65:0] actual_data;
-
         // Initial Reset for design
         i_reset_n = 1'b0; #10;
         @(posedge clk)
@@ -75,19 +77,26 @@ module xgmii_encoder_top;
 
         fork 
             begin
-                foreach(test_queue[i]) begin
-                    expected_data = encode_data(test_queue[i].data_word, test_queue[i].ctrl_word);
-                    $display("Expected Data: %0h", expected_data);
-                    xgmii.drive_xgmii_data(test_queue[i].data_word, test_queue[i].ctrl_word);
+                foreach(tx_queue[i]) begin
+                    rx_queue.push_back(tx_queue[i]);
+                    xgmii.drive_xgmii_data(tx_queue[i].data_word, tx_queue[i].ctrl_word);
                 end
             end
             begin
                 forever begin
-                    xgmii.sample_encoded_data(actual_data);
+                    logic [65:0] expected_data;
+                    logic [65:0] actual_data;                    
+                    xgmii_frame_t rx_data;
+                    
+                    rx_data = rx_queue.pop_front();
+                    expected_data = encode_data(rx_data.data_word, rx_data.ctrl_word);
 
-                    assert (actual_data == expected_data)
-                        else begin
-                            $display("Assertion failed! Expected: %0d, Actual: %0d", expected_data, actual_data);
+                    xgmii.sample_encoded_data(actual_data);  
+
+                    if (actual_data == expected_data) begin
+                        $display("MATCH: Expected data matches actual data %0h == %0h", expected_data, actual_data);
+                    end else begin
+                        $display("MISMATCH: Assertion failed! Expected: %0h, Actual: %0h", expected_data, actual_data);
                     end
                 end
             end
