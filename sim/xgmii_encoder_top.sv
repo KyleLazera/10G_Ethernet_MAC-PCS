@@ -19,23 +19,6 @@ module xgmii_encoder_top;
     xgmii_if xgmii(clk, i_reset_n) ;
     xgmii_frame_t tx_queue[$], rx_queue[$];
 
-    initial begin
-        /* Frame 1: Idle followed by start condition in lane 4 */
-        tx_queue.push_back('{64'h030201FB07070707, 8'b00011111}); 
-        /* Frame 2: Data Frame */
-        tx_queue.push_back('{64'h0807060504030201, 8'b00000000}); 
-        /* Frame 3: Terminate in Lane 0 followed by idle */
-        tx_queue.push_back('{64'h07070707070707FD, 8'b11111111}); 
-        /* Frame 4: Start condition in lane 1 & data */
-        tx_queue.push_back('{64'h20100E0D0C0B0AFB, 8'b00000001}); 
-        /* Frame 5: Data Frame */
-        tx_queue.push_back('{64'h0807060504030201, 8'b00000000}); 
-        /* Frame 6: Terminate in Lane 7 */
-        tx_queue.push_back('{64'hFD2211EEDDCCBBAA, 8'b10000000}); 
-        /* Frame 7: Idle */
-        tx_queue.push_back('{64'h0707070707070707, 8'b11111111}); 
-    end
-
     /* DUT Instantiation */
     xgmii_encoder#( 
         .DATA_WIDTH(DATA_WIDTH),
@@ -74,6 +57,11 @@ module xgmii_encoder_top;
         i_reset_n = 1'b1;
 
         /* Stimulus */
+
+        sanity_test(tx_queue);
+
+        foreach(tx_queue[i])
+            $display("Data: %0h Control: %0b", tx_queue[i].data_word, tx_queue[i].ctrl_word);
 
         fork 
             begin

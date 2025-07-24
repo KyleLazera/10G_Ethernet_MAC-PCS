@@ -53,11 +53,13 @@ package xgmii_encoder_pkg;
                BLOCK_TERM_6 = 8'hE1,    
                BLOCK_TERM_7 = 8'hFF; 
 
+    // Allows testing data to be held in a queue
     typedef struct packed {
         logic [63:0] data_word;
         logic [7:0]  ctrl_word;
     } xgmii_frame_t;
 
+    /************************* Golden Model *************************/
 
     /* This function is used to encode a 64 bit word using the 64b/66b encoding procedure 
      * outlined in IEEE 802.3-2012 Section 49.2. It takes in a 64 bit word, determines the 
@@ -171,6 +173,143 @@ package xgmii_encoder_pkg;
         return {encoded_hdr, encoded_word};
 
     endfunction : encode_data
+
+    function xgmii_frame_t generate_word(logic [7:0] block_type_field);
+        
+        xgmii_frame_t data;
+        int i;
+
+        data.ctrl_word = 8'b0;
+        
+        for(i = 0; i < 8; i++) begin
+            case(block_type_field)
+                BLOCK_CTRL: begin
+                    data.data_word[((i+1)*8)-1 -: 8] = XGMII_IDLE;
+                    data.ctrl_word = 8'hFF;
+                end
+                BLOCK_START_0 : begin
+                    if (i == 0)
+                       data.data_word[7:0] = XGMII_START;
+                    else 
+                        data.data_word[((i+1)*8)-1 -: 8] = $urandom_range(0, 255);
+                    data.ctrl_word = 8'h01;
+                end
+                BLOCK_START_4: begin
+                    if(i == 4)
+                        data.data_word[((i+1)*8)-1 -: 8] = XGMII_START;
+                    else if (i < 4)
+                        data.data_word[((i+1)*8)-1 -: 8] = XGMII_IDLE;
+                    else 
+                        data.data_word[((i+1)*8)-1 -: 8] = $urandom_range(0, 255);
+                    data.ctrl_word = 8'b00011111;                        
+                end
+                BLOCK_TERM_0: begin
+                    if (i == 0)
+                       data.data_word[((i+1)*8)-1 -: 8] = XGMII_TERM;
+                    else 
+                        data.data_word[((i+1)*8)-1 -: 8] = XGMII_IDLE;
+                    data.ctrl_word = 8'hFF;                    
+                end
+                BLOCK_TERM_1: begin
+                    if(i == 1)
+                        data.data_word[((i+1)*8)-1 -: 8] = XGMII_TERM;
+                    else if (i < 1)
+                        data.data_word[((i+1)*8)-1 -: 8] = $urandom_range(0, 255);
+                    else 
+                        data.data_word[((i+1)*8)-1 -: 8] = XGMII_IDLE;
+                    data.ctrl_word = 8'b11111110;                    
+                end
+                BLOCK_TERM_2: begin
+                    if(i == 2)
+                        data.data_word[((i+1)*8)-1 -: 8] = XGMII_TERM;                        
+                    else if(i < 2)
+                        data.data_word[((i+1)*8)-1 -: 8] = $urandom_range(0, 255);
+                    else 
+                        data.data_word[((i+1)*8)-1 -: 8] = XGMII_IDLE;
+                    data.ctrl_word = 8'b11111100;                    
+                end
+                BLOCK_TERM_3: begin
+                    if(i == 3)
+                        data.data_word[((i+1)*8)-1 -: 8] = XGMII_TERM;                        
+                    else if(i < 3)
+                        data.data_word[((i+1)*8)-1 -: 8] = $urandom_range(0, 255);
+                    else 
+                        data.data_word[((i+1)*8)-1 -: 8] = XGMII_IDLE;
+                    data.ctrl_word = 8'b11111000;                    
+                end
+                BLOCK_TERM_4: begin
+                    if(i == 4)
+                        data.data_word[((i+1)*8)-1 -: 8] = XGMII_TERM;                        
+                    else if(i < 4)
+                        data.data_word[((i+1)*8)-1 -: 8] = $urandom_range(0, 255);
+                    else 
+                        data.data_word[((i+1)*8)-1 -: 8] = XGMII_IDLE;
+                    data.ctrl_word = 8'b11110000;                    
+                end
+                BLOCK_TERM_5: begin
+                    if(i == 5)
+                        data.data_word[((i+1)*8)-1 -: 8] = XGMII_TERM;                        
+                    else if(i < 5)
+                        data.data_word[((i+1)*8)-1 -: 8] = $urandom_range(0, 255);
+                    else 
+                        data.data_word[((i+1)*8)-1 -: 8] = XGMII_IDLE;
+                    data.ctrl_word = 8'b11100000;                    
+                end
+                BLOCK_TERM_6: begin
+                    if(i == 6)
+                        data.data_word[((i+1)*8)-1 -: 8] = XGMII_TERM;                        
+                    else if(i < 6)
+                        data.data_word[((i+1)*8)-1 -: 8] = $urandom_range(0, 255);
+                    else 
+                        data.data_word[((i+1)*8)-1 -: 8] = XGMII_IDLE;
+                    data.ctrl_word = 8'b11000000;                    
+                end
+                BLOCK_TERM_7: begin
+                    if(i == 7)
+                        data.data_word[((i+1)*8)-1 -: 8] = XGMII_TERM;                        
+                    else if(i < 7)
+                        data.data_word[((i+1)*8)-1 -: 8] = $urandom_range(0, 255);
+                    else 
+                        data.data_word[((i+1)*8)-1 -: 8] = XGMII_IDLE;
+                    data.ctrl_word = 8'b10000000;  
+                end     
+                default: 
+                    data.data_word[((i+1)*8)-1 -: 8] = $urandom_range(0, 255);          
+            endcase
+        end
+
+        return data;
+
+    endfunction : generate_word
+
+    /************************* Test Cases *************************/
+
+    ////////////////////////////////////////////////////////////////////
+    // Sanity test is used to test basic functionality of the DUT by  
+    // sending the following frames:
+    //  1) Start Condition lane 0 & 4
+    //  2) Data Frames
+    //  3) Terminate Lane 0 - 7
+    //  4) Idle frames
+    /////////////////////////////////////////////////////////////////////
+    function automatic sanity_test(output xgmii_frame_t tx_queue[$]);
+
+        xgmii_frame_t data;
+
+        tx_queue.push_back(generate_word(BLOCK_START_4));
+        tx_queue.push_back(generate_word(8'h00));
+        tx_queue.push_back(generate_word(BLOCK_TERM_0));
+        
+        /* Frame 4: Start condition in lane 1 & data */
+        tx_queue.push_back('{64'h20100E0D0C0B0AFB, 8'b00000001}); 
+        /* Frame 5: Data Frame */
+        tx_queue.push_back('{64'h0807060504030201, 8'b00000000}); 
+        /* Frame 6: Terminate in Lane 7 */
+        tx_queue.push_back('{64'hFD2211EEDDCCBBAA, 8'b10000000}); 
+        /* Frame 7: Idle */
+        tx_queue.push_back('{64'h0707070707070707, 8'b11111111});        
+
+    endfunction : sanity_test
 
 
 endpackage : xgmii_encoder_pkg
