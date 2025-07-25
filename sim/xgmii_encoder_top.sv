@@ -60,9 +60,6 @@ module xgmii_encoder_top;
 
         sanity_test(tx_queue);
 
-        foreach(tx_queue[i])
-            $display("Data: %0h Control: %0b", tx_queue[i].data_word, tx_queue[i].ctrl_word);
-
         fork 
             begin
                 foreach(tx_queue[i]) begin
@@ -81,9 +78,9 @@ module xgmii_encoder_top;
 
                     xgmii.sample_encoded_data(actual_data);  
 
-                    if (actual_data == expected_data) begin
-                        $display("MATCH: Expected data matches actual data %0h == %0h", expected_data, actual_data);
-                    end else begin
+                    assert(actual_data == expected_data) 
+                        //$display("MATCH: Expected data matches actual data %0h == %0h", expected_data, actual_data);
+                    else begin
                         $display("MISMATCH: Assertion failed! Expected: %0h, Actual: %0h", expected_data, actual_data);
                     end
                 end

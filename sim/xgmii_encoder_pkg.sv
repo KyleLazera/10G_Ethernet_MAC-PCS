@@ -174,6 +174,10 @@ package xgmii_encoder_pkg;
 
     endfunction : encode_data
 
+    /* This function is used to generate a 32 bit word and 4 bit associated
+     * control word based on the block type field input. It outputs the 
+     * encapsulated packet containing both.
+     */
     function xgmii_frame_t generate_word(logic [7:0] block_type_field);
         
         xgmii_frame_t data;
@@ -282,6 +286,37 @@ package xgmii_encoder_pkg;
 
     endfunction : generate_word
 
+    /* This function is used to generate a full frame and store it in a queue based on the arguments
+     * specified.
+     * 
+     * Args: 
+     *      start_type: Lane to start in
+     *      term_type: Lane to end in
+     *      tx_queue: Queue to store the data in 
+     */
+    function generate_frame(logic [7:0] start_type, logic [7:0] term_type, ref xgmii_frame_t tx_queue[$]);
+        int i;
+        int num_data_words, num_idle_words;
+
+        num_data_words = $urandom_range(5, 10);
+        num_idle_words = $urandom_range(5, 10);
+
+        // Queue Start Frame
+        tx_queue.push_back(generate_word(start_type));
+        
+        // Queue randomized number of data frames
+        for(i = 0; i < num_data_words; i++)
+            tx_queue.push_back(generate_word(8'h00));
+        
+        // Queue termination type
+        tx_queue.push_back(generate_word(term_type));
+
+        // Queue random number of IDLE frames
+        for(i = 0; i < num_idle_words; i++)
+            tx_queue.push_back(generate_word(BLOCK_CTRL));       
+
+    endfunction : generate_frame
+
     /************************* Test Cases *************************/
 
     ////////////////////////////////////////////////////////////////////
@@ -296,18 +331,46 @@ package xgmii_encoder_pkg;
 
         xgmii_frame_t data;
 
-        tx_queue.push_back(generate_word(BLOCK_START_4));
-        tx_queue.push_back(generate_word(8'h00));
-        tx_queue.push_back(generate_word(BLOCK_TERM_0));
+        /* Start Lane 4 and terminate in lane 0 */
+        generate_frame(BLOCK_START_4, BLOCK_TERM_0, tx_queue);
+        /* Start Lane 0 and terminate in lane 0 */
+        generate_frame(BLOCK_START_0, BLOCK_TERM_0, tx_queue);
         
-        /* Frame 4: Start condition in lane 1 & data */
-        tx_queue.push_back('{64'h20100E0D0C0B0AFB, 8'b00000001}); 
-        /* Frame 5: Data Frame */
-        tx_queue.push_back('{64'h0807060504030201, 8'b00000000}); 
-        /* Frame 6: Terminate in Lane 7 */
-        tx_queue.push_back('{64'hFD2211EEDDCCBBAA, 8'b10000000}); 
-        /* Frame 7: Idle */
-        tx_queue.push_back('{64'h0707070707070707, 8'b11111111});        
+        /* Start Lane 4 and terminate in lane 1 */
+        generate_frame(BLOCK_START_4, BLOCK_TERM_1, tx_queue);
+        /* Start Lane 0 and terminate in lane 1 */
+        generate_frame(BLOCK_START_0, BLOCK_TERM_1, tx_queue);
+        
+        /* Start Lane 4 and terminate in lane 2 */
+        generate_frame(BLOCK_START_4, BLOCK_TERM_2, tx_queue);
+        /* Start Lane 0 and terminate in lane 2 */
+        generate_frame(BLOCK_START_0, BLOCK_TERM_2, tx_queue);
+        
+        /* Start Lane 4 and terminate in lane 3 */
+        generate_frame(BLOCK_START_4, BLOCK_TERM_3, tx_queue);
+        /* Start Lane 0 and terminate in lane 3 */
+        generate_frame(BLOCK_START_0, BLOCK_TERM_3, tx_queue);
+        
+        /* Start Lane 4 and terminate in lane 4 */
+        generate_frame(BLOCK_START_4, BLOCK_TERM_4, tx_queue);
+        /* Start Lane 0 and terminate in lane 4 */
+        generate_frame(BLOCK_START_0, BLOCK_TERM_4, tx_queue);
+        
+        /* Start Lane 4 and terminate in lane 5 */
+        generate_frame(BLOCK_START_4, BLOCK_TERM_5, tx_queue);
+        /* Start Lane 0 and terminate in lane 5 */
+        generate_frame(BLOCK_START_0, BLOCK_TERM_5, tx_queue);
+        
+        /* Start Lane 4 and terminate in lane 6 */
+        generate_frame(BLOCK_START_4, BLOCK_TERM_6, tx_queue);
+        /* Start Lane 0 and terminate in lane 6 */
+        generate_frame(BLOCK_START_0, BLOCK_TERM_6, tx_queue);
+        
+        /* Start Lane 4 and terminate in lane 7 */
+        generate_frame(BLOCK_START_4, BLOCK_TERM_7, tx_queue);
+        /* Start Lane 0 and terminate in lane 7 */
+        generate_frame(BLOCK_START_0, BLOCK_TERM_7, tx_queue);
+                
 
     endfunction : sanity_test
 

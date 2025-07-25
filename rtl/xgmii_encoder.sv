@@ -135,13 +135,13 @@ logic stop_3_frame_reg = 1'b0;
 // a stop condition.
 //////////////////////////////////////////////////////////////////////////
 
-assign idle_frame_comb = (i_xgmii_txc == 4'b1111) & (i_xgmii_txd == 32'h07070707);
-assign start_frame_comb = (i_xgmii_txc == 4'b0001) & (i_xgmii_txd[7:0] == XGMII_START);
-assign data_frame_comb = (i_xgmii_txc == 4'b0000);
-assign stop_0_frame_comb = (i_xgmii_txc == 4'b1111) & (i_xgmii_txd == 32'h070707FD);
-assign stop_1_frame_comb = (i_xgmii_txc == 4'b1110) & (i_xgmii_txd[31:8] == 24'h0707FD);
-assign stop_2_frame_comb = (i_xgmii_txc == 4'b1100) & (i_xgmii_txd[31:16] == 16'h07FD);
-assign stop_3_frame_comb = (i_xgmii_txc == 4'b1000) & (i_xgmii_txd[31:24] == XGMII_TERM);
+assign idle_frame_comb = i_xgmii_valid & (i_xgmii_txc == 4'b1111) & (i_xgmii_txd == 32'h07070707);
+assign start_frame_comb = i_xgmii_valid & (i_xgmii_txc == 4'b0001) & (i_xgmii_txd[7:0] == XGMII_START);
+assign data_frame_comb = i_xgmii_valid & (i_xgmii_txc == 4'b0000);
+assign stop_0_frame_comb = i_xgmii_valid & (i_xgmii_txc == 4'b1111) & (i_xgmii_txd == 32'h070707FD);
+assign stop_1_frame_comb = i_xgmii_valid & (i_xgmii_txc == 4'b1110) & (i_xgmii_txd[31:8] == 24'h0707FD);
+assign stop_2_frame_comb = i_xgmii_valid & (i_xgmii_txc == 4'b1100) & (i_xgmii_txd[31:16] == 16'h07FD);
+assign stop_3_frame_comb = i_xgmii_valid & (i_xgmii_txc == 4'b1000) & (i_xgmii_txd[31:24] == XGMII_TERM);
 
 //////////////////////////////////////////////////////////////////////////
 // Because we need to operate on 2, 32-bit words, once we have encoded an 
@@ -257,9 +257,9 @@ always_ff@(posedge i_clk) begin
     encoded_word[1] <=  (send_term_lane_4) ? {xgmii_txd_payload[0][23:0], BLOCK_TERM_4} :
                         (send_term_lane_4_reg) ? {24'h0, xgmii_txd_payload[1][31:24]} :
                         (send_term_lane_5) ? {xgmii_txd_payload[0][23:0], BLOCK_TERM_5} :
-                        (send_term_lane_5_reg) ? {16'h0, xgmii_txd_payload[1][31:16]} :
+                        (send_term_lane_5_reg) ? {16'h0, xgmii_txd_payload[0][7:0], xgmii_txd_payload[1][31:24]} :
                         (send_term_lane_6) ? {xgmii_txd_payload[0][23:0], BLOCK_TERM_6} :
-                        (send_term_lane_6_reg) ? {8'h0, xgmii_txd_payload[1][31:8]} :
+                        (send_term_lane_6_reg) ? {8'h0, xgmii_txd_payload[0][15:0], xgmii_txd_payload[1][31:24]} :
                         (send_term_lane_7) ? {xgmii_txd_payload[0][23:0], BLOCK_TERM_7} :
                         (send_term_lane_7_reg) ? {xgmii_txd_payload[0][23:0], xgmii_txd_payload[1][31:24]}:
                         (send_idle_frame) ? {24'h0, BLOCK_CTRL} :
