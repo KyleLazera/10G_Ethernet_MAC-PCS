@@ -16,7 +16,6 @@ interface xgmii_if
     logic o_xgmii_pause;
 
     /* 64b/66b Encoder to Scrambler Interface */
-    logic i_scrambler_trdy;
     logic o_encoded_data_valid;
     logic [DATA_WIDTH-1:0] o_encoded_data;
     logic [HDR_WIDTH-1:0] o_sync_hdr;
@@ -37,8 +36,6 @@ interface xgmii_if
 
     task sample_encoded_data(output logic [65:0] encoded_data);
         int i;
-
-        i_scrambler_trdy <= 1'b1;
 
         // Wait for the data valid signal
         while (!o_encoded_data_valid) 

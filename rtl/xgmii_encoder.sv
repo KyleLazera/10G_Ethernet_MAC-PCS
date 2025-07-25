@@ -1,5 +1,14 @@
 `timescale 1ns / 1ps
 
+/*
+ * This module holds the logic for 64b/66b encoding of XGMII data according
+ * to the IEEE Std 802.3-2012 Clause 49. This module recieves 32 bit XGMII
+ * inputs and outputs 32 bit encoded words along with the synchronous header
+ * in parallel.
+ */
+
+ // TODO: Add support for reamining codes
+
 module xgmii_encoder
 #(
     
@@ -18,7 +27,6 @@ module xgmii_encoder
     output logic o_xgmii_pause,
 
     // 64b/66b Encoder to Scrambler Interface
-    input logic i_scrambler_trdy,
     output logic o_encoded_data_valid,
     output logic [DATA_WIDTH-1:0] o_encoded_data,
     output logic [HDR_WIDTH-1:0] o_sync_hdr,

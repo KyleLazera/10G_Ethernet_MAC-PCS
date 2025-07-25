@@ -33,7 +33,6 @@ module xgmii_encoder_top;
         .i_xgmii_valid(xgmii.i_xgmii_valid),
         .o_xgmii_pause(xgmii.o_xgmii_pause),
         // Scrambler Interface/Encoder Output
-        .i_scrambler_trdy(xgmii.i_scrambler_trdy),
         .o_encoded_data_valid(xgmii.o_encoded_data_valid),
         .o_encoded_data(xgmii.o_encoded_data),
         .o_sync_hdr(xgmii.o_sync_hdr),
