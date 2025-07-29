@@ -18,14 +18,14 @@ module scrambler #(
 
     // Output to Gearbox
     output logic o_data_valid,
-    output logic o_data
+    output logic [DATA_WIDTH-1:0] o_data
 );
 
 /*********** Signal Descriptions ***********/
 
 // Polynomial Signals
-logic [57:0] poly = 59'b0;
-logic [57:0] lfsr = 59'b0;
+logic [57:0] poly = 58'b0;
+logic [57:0] lfsr = 58'b0;
 
 // Data Path Signals
 logic [DATA_WIDTH-1:0] o_data_comb;
@@ -36,11 +36,11 @@ logic data_valid = 1'b0;
 
 // Init & latch combinational outputs
 always_ff@(posedge i_clk) begin
-    if(i_reset_n)
+    if(!i_reset_n)
         lfsr <= {58{1'b1}};
-    else begin
+    else if(i_data_valid) begin
         data_valid <= i_data_valid;
-        if(i_data_valid) begin
+        if(i_data_valid) begin          
             lfsr <= poly;
             o_data_reg <= o_data_comb;
         end
