@@ -3,6 +3,8 @@
  * This module contains the logic for the scrambler as specified by the IEEE 802.3-2012
  * clause 49.2. It implements the polynomial as specified by the document:
  *  G(x) = 1 + x^39 + x^58
+ *
+ * Incurred Latency: 1 clock cycle per byte 
  */
 
 module scrambler #(
@@ -24,8 +26,8 @@ module scrambler #(
 /*********** Signal Descriptions ***********/
 
 // Polynomial Signals
-logic [57:0] poly = 58'b0;
 logic [57:0] lfsr = 58'b0;
+logic [57:0] poly;
 
 // Data Path Signals
 logic [DATA_WIDTH-1:0] o_data_comb;
@@ -34,11 +36,11 @@ logic data_valid = 1'b0;
 
 /*********** Logic Implementation ***********/
 
-// Init & latch combinational outputs
+// Init lfsr & latch combinational outputs
 always_ff@(posedge i_clk) begin
     if(!i_reset_n)
         lfsr <= {58{1'b1}};
-    else if(i_data_valid) begin
+    else begin
         data_valid <= i_data_valid;
         if(i_data_valid) begin          
             lfsr <= poly;

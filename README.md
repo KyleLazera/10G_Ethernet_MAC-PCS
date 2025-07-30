@@ -70,6 +70,20 @@ Clock Frequency = 10.3125 Gbps / 64 bits ≈ 161 MHz
 However, this would introduce additional latency due to the clock domain crossing (CDC), which is undesirable for a low-latency design.
 Instead, a more efficient solution is to design the encoder to operate entirely at 322 MHz using 32-bit input and output blocks. While this increases logic complexity slightly compared to a pure 64-bit datapath, it eliminates unnecessary latency caused by CDC and keeps the entire data path running synchronously, ensuring a low-latency, high-speed design.
 
-### GearBox Design
+### Gearbox Design
 
-**Coming Soon**
+In digital logic, a gearbox is a device that is used to translate data of different widths between two different modules. This is necessary for the design due to the PCS interface with the GTY transceiver. Currently, the output of the PCS up to this point (output of the encoding block + scrambler) is a 66-bit wide signal. This is an issue, however, as the Ultrascale GTY transceiver IP only permits data widths of 16, 20, 32, 40, 64, 80, 128, or 160 bits. To achieve the width conversion, there are two main design options: an asynchronous gearbox or a synchronous gearbox.
+
+#### Asynchronous Gearbox
+
+Asynchronous gearboxes solves the width conversion issue by implementing a buffer and crossing clock domains to ensure the throughput reamins correct for the output width. As an example for this specific design, we could use a buffer that inputs data at 32 bits per clock cycle with a clock frequency of 322 MHz. Additionally, taking into account the synchronous header, we are able to input 66 bits every 2 clock cycles. Depending on the output width we then want to achieve, we can calculate the output clock rate and pull the specified amount of data from the buffer at that rate.
+
+As an example, if we were using a 64-bit output width, we can calculate:
+
+Clock Frequency = 10.3125 Gbps / 64 bits ≈ 161 MHz
+
+Therefore, every 6.2ns (length of 2 clock cycles at frequency 322MHz) we will write in 66 bits of data and every 6.2ns (length of 1 clock period for 161MHz) we will read out 64 bits of data.
+
+This design has two major downfalls. Firstly, it requires a clock domain crossing, which incurs extra latency into the design and goes against one of the design goals. Additionally, because data is being written into the buffer faster than it is being read out (66 bits in for every 64 bits out), the risk of buffer overflow does exist, even though in this case, it is minimal due to only a 2-bit increase.
+
+#### Synchronous Gearbox
