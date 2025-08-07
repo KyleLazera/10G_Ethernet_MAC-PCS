@@ -88,15 +88,16 @@ This overlapping of blocks across cycles introduces data misalignment, which is 
 
 The gearbox acts as a realignment buffer, collecting consecutive 32-bit input words and reassembling them into correctly aligned 66-bit blocks. This ensures that the serialized output to the transceiver consists of valid, properly framed 66-bit words, each containing exactly one sync header and one payload.
 
-66-bit Block Structure:
+66-bit Block Structure:  
 [H][---------------------------------------------------------------P64---------------------------------------------------------------]
 
 32-bit Word Cycles (input to gearbox):
+
 +------------------------------+------------------------------+------------------------------+
 | Word 1: H(2) | P(30)         | Word 2: P(2) | P(30)         | Word 3: P(2) | H(2) | P(28)   |
 +------------------------------+------------------------------+------------------------------+
 
-H = 2-bit header
+H = 2-bit header  
 P = Payload bits
 
 
