@@ -72,7 +72,33 @@ Instead, a more efficient solution is to design the encoder to operate entirely 
 
 ### Gearbox Design
 
-In digital logic, a gearbox is a device that is used to translate data of different widths between two different modules. This is necessary for the design due to the PCS interface with the GTY transceiver. Currently, the output of the PCS up to this point (output of the encoding block + scrambler) is a 66-bit wide signal. This is an issue, however, as the Ultrascale GTY transceiver IP only permits data widths of 16, 20, 32, 40, 64, 80, 128, or 160 bits. To achieve the width conversion, there are two main design options: an asynchronous gearbox or a synchronous gearbox.
+In this project, a 32-bit data path is used to move data through the Physical Coding Sublayer (PCS) and into the gearbox. However, the 10GBASE-R specification defines its data format in terms of 66-bit blocks, each composed of a 2-bit synchronization header followed by 64 bits of payload data.
+
+Since our internal data path is only 32 bits wide, a single 66-bit block must be transmitted over multiple clock cycles. This creates a misalignment between the block boundary and the word boundary, which cannot be resolved without additional logic.
+
+The 66-bit block is split across three 32-bit cycles as follows:
+
+    Cycle 1: Contains the 2-bit sync header + first 30 bits of payload
+
+    Cycle 2: Contains the remaining 34 bits of payload (2 bits from previous payload + 30 new bits)
+
+    Cycle 3: Contains the final 2 bits of the current 66-bit block + 2-bit header of the next block + 28 bits of new payload
+
+This overlapping of blocks across cycles introduces data misalignment, which is why a gearbox is required.
+
+The gearbox acts as a realignment buffer, collecting consecutive 32-bit input words and reassembling them into correctly aligned 66-bit blocks. This ensures that the serialized output to the transceiver consists of valid, properly framed 66-bit words, each containing exactly one sync header and one payload.
+
+66-bit Block Structure:
+[H][---------------------------------------------------------------P64---------------------------------------------------------------]
+
+32-bit Word Cycles (input to gearbox):
++------------------------------+------------------------------+------------------------------+
+| Word 1: H(2) | P(30)         | Word 2: P(2) | P(30)         | Word 3: P(2) | H(2) | P(28)   |
++------------------------------+------------------------------+------------------------------+
+
+H = 2-bit header
+P = Payload bits
+
 
 #### Asynchronous Gearbox
 
@@ -84,6 +110,21 @@ Clock Frequency = 10.3125 Gbps / 64 bits ≈ 161 MHz
 
 Therefore, every 6.2ns (length of 2 clock cycles at frequency 322MHz) we will write in 66 bits of data and every 6.2ns (length of 1 clock period for 161MHz) we will read out 64 bits of data.
 
-This design has two major downfalls. Firstly, it requires a clock domain crossing, which incurs extra latency into the design and goes against one of the design goals. Additionally, because data is being written into the buffer faster than it is being read out (66 bits in for every 64 bits out), the risk of buffer overflow does exist, even though in this case, it is minimal due to only a 2-bit increase.
+This design has a major downfall in that it requires a clock domain crossing, which incurs extra latency into the design and goes against one of the design goals. 
 
 #### Synchronous Gearbox
+
+The synchronous gearbox performs width conversion without involving a clock domain crossing, meaning both the input and output clock domains operate at the same frequency. However, a subtle issue arises: while the clocks are synchronized, the input data rate is slightly higher than the output data rate due to protocol overhead—a 2-bit header is inserted every other cycle. Every two clock cycles, the gearbox receives two 32-bit data words and one 2-bit header, totaling 66 bits over 2 cycles.
+
+Input throughput:  
+`66 bits / 2 cycles = 33 bits per cycle`
+
+Output throughput:  
+`32 bits per cycle`
+
+Using both of these throughput calculations, we can determine the input-to-output ratio of the gearbox.
+
+Input-to-output ratio:  
+`33 bits : 32 bits`
+
+This means for every 32-bit word transmitted from the gearbox, there will be 1 bit of extra data left over from the input. Without control logic, this excess would accumulate indefinitely, which is not feasible. However, since this discrepancy adds 1 extra bit per cycle, after 32 cycles, a full 32-bit word accumulates. The solution is to apply backpressure from the gearbox to the Encoder and MAC every 32 cycles. This backpressure halts the transmission of new data momentarily, allowing the gearbox to transmit the extra 32-bit word and maintain synchronization.
