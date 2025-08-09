@@ -15,7 +15,7 @@ module gearbox
     output logic [DATA_WIDTH-1:0] o_data,
 
     // Control signal bback to encoder
-    output logic gearbox_rdy 
+    output logic gearbox_pause
 );
 
 logic [DATA_WIDTH-1:0] data_latch = '0;
@@ -30,15 +30,16 @@ logic [5:0] cntr = 6'b0;
 ///////////////////////////////////////////////////////////////////
 
 always_ff @(posedge i_clk) begin
-    if(i_resent_n | ~i_data_valid)
+    if(~i_reset_n | ~i_data_valid)
         cntr <= 6'b0;
     else
         cntr <= cntr + 1;
 end
 
-always_ff @(posedge i_clk) 
+always_ff @(posedge i_clk) begin
     data_latch <= i_data;
-    gearbox_rdy <= (cntr == 6'd30);
+    gearbox_pause <= (cntr == 6'd30);
+end
 
 always_comb begin
     case(cntr) 
@@ -74,6 +75,7 @@ always_comb begin
         6'd29: o_data = {i_data[1:0], data_latch[31:2]};
         6'd30: o_data = {i_hdr, data_latch[31:2]};
         6'd31: o_data = data_latch;
+        default: o_data = data_latch;
     endcase
 end
 

@@ -30,7 +30,10 @@ module xgmii_encoder
     output logic o_encoded_data_valid,
     output logic [DATA_WIDTH-1:0] o_encoded_data,
     output logic [HDR_WIDTH-1:0] o_sync_hdr,
-    output logic o_encoding_err
+    output logic o_encoding_err,
+
+    // Back Pressure from GearBox
+    input logic gearbox_pause
 );
 
 /* XGMII Coded Signals */
