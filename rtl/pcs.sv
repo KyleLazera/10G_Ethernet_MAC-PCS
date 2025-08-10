@@ -1,5 +1,7 @@
 module pcs#(
-    parameter DATA_WIDTH = 32
+    parameter DATA_WIDTH = 32,
+    parameter CTRL_WIDTH = 4,
+    parameter HDR_WIDTH = 2
 ) (
     // Clock & Reset (from GTY Transceiver)
     input  wire                  gty_tx_usr_clk,      // GTY TX user clock (txusrclk2_out)
@@ -12,7 +14,7 @@ module pcs#(
     output logic o_xgmii_pause,                       // Pauses MAC (needed for gearbox)
 
     // PCS to GTY Transceiver Transmit Interface
-    output wire [TX_DATA_WIDTH-1:0] pcs_tx_gearbox_data  // TX data output to GTY transceiver 
+    output wire [DATA_WIDTH-1:0] pcs_tx_gearbox_data  // TX data output to GTY transceiver 
 );
 
 /* -------------------- TX Data Path -------------------- */
@@ -22,11 +24,12 @@ module pcs#(
 
 logic [DATA_WIDTH-1:0]  encoder_data;
 logic                   encoder_valid;
-logic                   encoder_hdr;
+logic [HDR_WIDTH-1:0]   encoder_hdr;
+logic                   gearbox_pause;
 
 xgmii_encoder #(
     .DATA_WIDTH(DATA_WIDTH),
-    .HDR_WIDTH(2)
+    .HDR_WIDTH(HDR_WIDTH)
 ) encoder_64b_66b (
     .i_clk(gty_tx_usr_clk),
     .i_reset_n(gty_tx_usr_reset),
@@ -63,13 +66,11 @@ scrambler #(
     .i_data(encoder_data),
 
     // Output to Gearbox
-    .o_data_valid(scrambler_data),
-    .o_data(scrambler_valid)
+    .o_data_valid(scrambler_valid),
+    .o_data(scrambler_data)
 );
 
 /* Custom Synchronous Gearbox */
-
-logic gearbox_pause;
 
 gearbox #(
     .DATA_WIDTH(DATA_WIDTH)
@@ -84,7 +85,7 @@ gearbox #(
     .i_hdr(encoder_hdr),
 
     // Gearbox Data Output
-    .o_data(gearbox_data),
+    .o_data(pcs_tx_gearbox_data),
 
     // Control signal bback to encoder
     .o_gearbox_pause(gearbox_pause)

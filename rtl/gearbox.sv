@@ -38,7 +38,7 @@ end
 
 always_ff @(posedge i_clk) begin
     data_latch <= i_data;
-    gearbox_pause <= (cntr == 6'd30);
+    o_gearbox_pause <= (cntr == 6'd30);
 end
 
 // ----------------------------------------------------------------------------

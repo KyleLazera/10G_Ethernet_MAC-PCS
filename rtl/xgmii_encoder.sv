@@ -87,6 +87,7 @@ logic [DATA_WIDTH-1:0] encoded_word [1:0];
 logic [1:0] sync_hdr_reg = 2'b0;
 logic encoded_word_select [1:0];
 logic data_valid = 1'b0;
+logic gearbox_pause;
 
 /* Control Registers */
 logic cycle_cntr = 1'b0;
@@ -119,6 +120,9 @@ end
 always_ff @(posedge i_clk)
     if (cycle_cntr)
         sync_hdr_reg <= (|{xgmii_ctrl_payload, i_xgmii_txc}) ? 2'b10 : 2'b01;
+
+always_ff @(posedge i_clk)
+    gearbox_pause <= i_gearbox_pause;
 
 /******************* Initial Word Encoding Logic *******************/
 
@@ -290,5 +294,6 @@ end
 assign o_encoded_data = encoded_word_select[1] ? encoded_word[1] : encoded_word[0];
 assign o_sync_hdr = sync_hdr_reg;
 assign o_encoded_data_valid = data_valid;
+assign o_xgmii_pause = gearbox_pause;
 
 endmodule

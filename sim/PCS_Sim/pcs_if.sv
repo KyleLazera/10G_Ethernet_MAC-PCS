@@ -1,5 +1,5 @@
 
-interface xgmii_if
+interface pcs_if
 (
     input i_clk,
     input i_reset_n
@@ -7,7 +7,6 @@ interface xgmii_if
 
     localparam DATA_WIDTH = 32;
     localparam CTRL_WIDTH = 4;
-    localparam HDR_WIDTH = 2;
 
     /* MAC to PCS Interface */
     logic [DATA_WIDTH-1:0] i_xgmii_txd;
@@ -15,11 +14,8 @@ interface xgmii_if
     logic i_xgmii_valid;
     logic o_xgmii_pause;
 
-    /* 64b/66b Encoder to Scrambler Interface */
-    logic o_encoded_data_valid;
-    logic [DATA_WIDTH-1:0] o_encoded_data;
-    logic [HDR_WIDTH-1:0] o_sync_hdr;
-    logic o_encoding_err;
+    /* PCS Output to GTY Transciever*/
+    logic [DATA_WIDTH-1:0] pcs_tx_gearbox_data;
 
 
     /* Task used to drive Data to the PCS via XGMII Interface */
@@ -40,25 +36,10 @@ interface xgmii_if
 
     endtask
 
-    task sample_encoded_data(output logic [65:0] encoded_data);
-        int i;
-
-        // Wait for the data valid signal
-        while (!o_encoded_data_valid) 
-            @(posedge i_clk);  
-
-        // Sample two 32-bit chunks
-        for (i = 0; i < 2; i++) begin
-
-            encoded_data[(32*(i+1))-1 -: 32] <= o_encoded_data;
-
-            // Only assign sync header once (from the first word)
-            if (i == 0)
-                encoded_data[65:64] <= o_sync_hdr;
-
-            @(posedge i_clk);
-        end
-    endtask : sample_encoded_data
+    task sample_gty_tx_data(output logic [DATA_WIDTH-1:0] gty_tx_data);
+        gty_tx_data = pcs_tx_gearbox_data;
+        @(posedge i_clk);
+    endtask : sample_gty_tx_data
 
 
-endinterface : xgmii_if
+endinterface : pcs_if
