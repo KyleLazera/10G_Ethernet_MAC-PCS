@@ -15,19 +15,19 @@ module gearbox
     output logic [DATA_WIDTH-1:0] o_data,
 
     // Control signal bback to encoder
-    output logic gearbox_pause
+    output logic o_gearbox_pause
 );
 
 logic [DATA_WIDTH-1:0] data_latch = '0;
 logic [5:0] cntr = 6'b0;
 
-///////////////////////////////////////////////////////////////////
+// --------------------------------------------------------------------
 // To ensure we do not overrun the gearbox, we need to keep track 
 // of how many 32-bit words of data have been receieved. Every 31 
 // words, we want to assert back-pressure to pause the down-stream
 // modules (Decoder & MAC). To see the math behind why 31 transmissions
 // are needed, see teh README.
-///////////////////////////////////////////////////////////////////
+// --------------------------------------------------------------------
 
 always_ff @(posedge i_clk) begin
     if(~i_reset_n | ~i_data_valid)
@@ -40,6 +40,25 @@ always_ff @(posedge i_clk) begin
     data_latch <= i_data;
     gearbox_pause <= (cntr == 6'd30);
 end
+
+// ----------------------------------------------------------------------------
+// Synchronous Gearbox Output Alignment Logic
+//
+// This gearbox converts 66-bit encoded Ethernet blocks (64 data + 2 header bits)
+// into a continuous stream of 32-bit words without crossing clock domains. The
+// case statement uses the cycle counter (`cntr`) to align and merge incoming
+// 32-bit chunks (`i_data`) and the 2-bit sync header (`i_hdr`) with previously
+// latched data (`data_latch`), ensuring correct word boundaries on the output.
+//
+// Because input throughput is slightly higher than output throughput
+// (33 bits/cycle in vs. 32 bits/cycle out), the counter advances through 32
+// alignment states. Each state shifts the output boundary by 2 bits, inserting
+// the header at the correct location. After 32 cycles, the accumulated extra
+// 32 bits are output in full, and backpressure is applied to prevent overrun.
+//
+// This logic ensures bit-accurate ordering of all incoming data and avoids
+// drift between input and output streams.
+// ----------------------------------------------------------------------------
 
 always_comb begin
     case(cntr) 

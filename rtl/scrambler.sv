@@ -8,8 +8,7 @@
  */
 
 module scrambler #(
-    parameter DATA_WIDTH = 32,
-    parameter SCRAMBLER_BYPASS = 0 
+    parameter DATA_WIDTH = 32
 )(
     input logic i_clk,
     input logic i_reset_n,
@@ -51,7 +50,7 @@ end
 
 integer i;
 
-////////////////////////////////////////////////////////////////////
+// --------------------------------------------------------------------
 // According to IEEE 802.3-2012, Clause 49.2, the scrambler uses
 // the polynomial: G(x) = 1 + x^39 + x^58. This corresponds to a 
 // 58-bit Linear Feedback Shift Register (LFSR), where the feedback 
@@ -60,7 +59,7 @@ integer i;
 // This feedback bit is:
 //   1) Shifted into the LFSR to update its state, and
 //   2) Bitwise XORed with each input data bit to produce scrambled output.
-////////////////////////////////////////////////////////////////////
+// --------------------------------------------------------------------
 always_comb begin
 
     poly = lfsr;

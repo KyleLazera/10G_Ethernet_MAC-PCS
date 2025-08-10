@@ -38,7 +38,7 @@ module gearbox_top;
         .i_data_valid(data_valid),
         .i_hdr(sync_hdr),
         .o_data(data_out),
-        .gearbox_pause(gearbox_pause)
+        .o_gearbox_pause(gearbox_pause)
     );
 
     /* Drive/Read Stimulus Tasks */

@@ -13,8 +13,8 @@ module xgmii_encoder
 #(
     
     parameter DATA_WIDTH    = 32,
-    parameter CTRL_WIDTH    = (DATA_WIDTH/8),
-    parameter HDR_WIDTH     = 2
+    parameter HDR_WIDTH     = 2,
+    parameter CTRL_WIDTH    = (DATA_WIDTH/8)
 )
 (
     input logic i_clk,
@@ -33,7 +33,7 @@ module xgmii_encoder
     output logic o_encoding_err,
 
     // Back Pressure from GearBox
-    input logic gearbox_pause
+    input logic i_gearbox_pause
 );
 
 /* XGMII Coded Signals */
@@ -91,13 +91,13 @@ logic data_valid = 1'b0;
 /* Control Registers */
 logic cycle_cntr = 1'b0;
 
-///////////////////////////////////////////////////////////////////
+// ----------------------------------------------------------------------
 // Used to keep track of whether we are on an even (cycle_cntr = 0)
 // or odd (cycle_cntr = 1) cycle. This is important because the 
 // encoder operates on 64 bit blocks of data, however, the input
 // XGMII bus is 32 bits wide. This counter keeps track of when 2 cycles
 // worth of data have been recieved.
-///////////////////////////////////////////////////////////////////
+// ----------------------------------------------------------------------
 always_ff@(posedge i_clk) begin
     if(!i_reset_n)
         cycle_cntr <= 1'b0;
@@ -138,13 +138,13 @@ logic stop_1_frame_reg = 1'b0;
 logic stop_2_frame_reg = 1'b0;
 logic stop_3_frame_reg = 1'b0;
 
-//////////////////////////////////////////////////////////////////////////
+// -----------------------------------------------------------------------------
 // To achieve lower-latency in the design, each 32 bit word is encoded as
 // soon as it becomes available on the input line via combinational logic.
 // This means that as each 32-bit word arrives, we can determine whether it 
 // holds data or control info such as a start condition, idle frame or 
 // a stop condition.
-//////////////////////////////////////////////////////////////////////////
+// -----------------------------------------------------------------------------
 
 assign idle_frame_comb = i_xgmii_valid & (i_xgmii_txc == 4'b1111) & (i_xgmii_txd == 32'h07070707);
 assign start_frame_comb = i_xgmii_valid & (i_xgmii_txc == 4'b0001) & (i_xgmii_txd[7:0] == XGMII_START);
@@ -154,12 +154,12 @@ assign stop_1_frame_comb = i_xgmii_valid & (i_xgmii_txc == 4'b1110) & (i_xgmii_t
 assign stop_2_frame_comb = i_xgmii_valid & (i_xgmii_txc == 4'b1100) & (i_xgmii_txd[31:16] == 16'h07FD);
 assign stop_3_frame_comb = i_xgmii_valid & (i_xgmii_txc == 4'b1000) & (i_xgmii_txd[31:24] == XGMII_TERM);
 
-//////////////////////////////////////////////////////////////////////////
+// -----------------------------------------------------------------------------
 // Because we need to operate on 2, 32-bit words, once we have encoded an 
 // input word, we need still need to encode the most signficiant word of the 
 // 64 bit input. Therefore, we latch the encoded status of the first 32 bit 
 // word (This acts similar to a shift register).
-//////////////////////////////////////////////////////////////////////////
+// -----------------------------------------------------------------------------
 always_ff@(posedge i_clk)  begin
     idle_frame_reg <= idle_frame_comb;  
     start_frame_reg <= start_frame_comb; 
@@ -198,7 +198,7 @@ logic send_term_lane_5_reg = 1'b0;
 logic send_term_lane_6_reg = 1'b0;
 logic send_term_lane_7_reg = 1'b0;
 
-//////////////////////////////////////////////////////////////////////////
+// -----------------------------------------------------------------------------
 // When cycle_cntr == 1, this indicates we are currently receiving our
 // 2nd 32-bit word (most significant word). This means, we can know use the 
 // contents of our latched encoded state from the previous word and the
@@ -211,7 +211,7 @@ logic send_term_lane_7_reg = 1'b0;
 // start condition and the current word being encoded contains data, this 
 // indicates a start condition at lane 0 (Start conditions can only occur in
 // lane 0 or 4).
-//////////////////////////////////////////////////////////////////////////
+// -----------------------------------------------------------------------------
 assign encoded_data_valid = cycle_cntr & i_xgmii_valid;
 assign send_idle_frame = cycle_cntr & idle_frame_comb & idle_frame_reg;
 assign send_start_lane_0 = cycle_cntr & data_frame_comb & start_frame_reg;
@@ -225,13 +225,13 @@ assign send_term_lane_5 = cycle_cntr & stop_1_frame_comb & data_frame_reg;
 assign send_term_lane_6 = cycle_cntr & stop_2_frame_comb & data_frame_reg;
 assign send_term_lane_7 = cycle_cntr & stop_3_frame_comb & data_frame_reg;
 
-/////////////////////////////////////////////////////////////////////////////
+// -----------------------------------------------------------------------------
 // Along wth recieveing data in 32 bit words, we also output 32 bit words, 
 // meaning we need to be able to see the encoded value for 2 clock cycles.
 // Therefore, we latch the data from above, this allows us to know whether
 // we are sending the first word in the output (combinational signal is high)
 // or we are sending the second word in the output (latched signal is high).
-//////////////////////////////////////////////////////////////////////////
+// -----------------------------------------------------------------------------
 always_ff@(posedge i_clk) begin
     encoded_data_valid_reg <= encoded_data_valid;
     send_idle_frame_reg <= send_idle_frame;

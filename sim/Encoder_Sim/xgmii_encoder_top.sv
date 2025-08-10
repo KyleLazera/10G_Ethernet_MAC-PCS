@@ -36,7 +36,8 @@ module xgmii_encoder_top;
         .o_encoded_data_valid(xgmii.o_encoded_data_valid),
         .o_encoded_data(xgmii.o_encoded_data),
         .o_sync_hdr(xgmii.o_sync_hdr),
-        .o_encoding_err(xgmii.o_encoding_err)
+        .o_encoding_err(xgmii.o_encoding_err),
+        .i_gearbox_pause()
     );
 
     /* Clock Instantiation */
