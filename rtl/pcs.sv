@@ -25,7 +25,7 @@ module pcs#(
 logic [DATA_WIDTH-1:0]  encoder_data;
 logic                   encoder_valid;
 logic [HDR_WIDTH-1:0]   encoder_hdr;
-logic                   gearbox_pause;
+logic                   scrambler_trdy;
 
 xgmii_encoder #(
     .DATA_WIDTH(DATA_WIDTH),
@@ -41,19 +41,23 @@ xgmii_encoder #(
     .o_xgmii_pause(o_xgmii_pause),
 
     // 64b/66b Encoder to Scrambler Interface
-    .o_encoded_data_valid(encoder_valid),
-    .o_encoded_data(encoder_data),
-    .o_sync_hdr(encoder_hdr),
-    .o_encoding_err(),
-
+    .o_tx_data_valid(encoder_valid),
+    .o_tx_data(encoder_data),
+    .o_tx_sync_hdr(encoder_hdr),
+    .o_tx_encoding_err(),
     // Back Pressure from GearBox
-    .i_gearbox_pause(gearbox_pause)    
+    .i_rx_trdy(scrambler_trdy)    
 );
 
 /* Scrambler */
 
 logic [DATA_WIDTH-1:0]  scrambler_data;
 logic                   scrambler_valid;
+logic [HDR_WIDTH-1:0]   sync_hdr_pipe;
+logic                   gerabox_trdy;
+
+always_ff @(posedge gty_tx_usr_clk)
+    sync_hdr_pipe <= encoder_hdr;
 
 scrambler #(
     .DATA_WIDTH(DATA_WIDTH)
@@ -62,12 +66,14 @@ scrambler #(
     .i_reset_n(gty_tx_usr_reset),
 
     // Encoder to Scrambler
-    .i_data_valid(encoder_valid),
-    .i_data(encoder_data),
+    .i_rx_data_valid(encoder_valid),
+    .i_rx_data(encoder_data),
+    .o_tx_trdy(scrambler_trdy),
 
     // Output to Gearbox
-    .o_data_valid(scrambler_valid),
-    .o_data(scrambler_data)
+    .o_tx_data_valid(scrambler_valid),
+    .o_tx_data(scrambler_data),
+    .i_rx_trdy(gerabox_trdy)
 );
 
 /* Custom Synchronous Gearbox */
@@ -80,15 +86,13 @@ gearbox #(
     .i_reset_n(gty_tx_usr_reset),
 
     // Encoded Data & Header input
-    .i_data(scrambler_data),
-    .i_data_valid(scrambler_valid),
-    .i_hdr(encoder_hdr),
+    .i_rx_data(scrambler_data),
+    .i_rx_data_valid(scrambler_valid),
+    .i_rx_sync_hdr(sync_hdr_pipe),
+    .o_tx_trdy(gerabox_trdy),
 
     // Gearbox Data Output
-    .o_data(pcs_tx_gearbox_data),
-
-    // Control signal bback to encoder
-    .o_gearbox_pause(gearbox_pause)
+    .o_tx_data(pcs_tx_gearbox_data)
 );
 
 /* -------------------- RX Data Path -------------------- */

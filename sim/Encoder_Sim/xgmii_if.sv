@@ -20,11 +20,14 @@ interface xgmii_if
     logic [DATA_WIDTH-1:0] o_encoded_data;
     logic [HDR_WIDTH-1:0] o_sync_hdr;
     logic o_encoding_err;
+    logic scrambler_rdy;
 
 
     /* Task used to drive Data to the PCS via XGMII Interface */
     task drive_xgmii_data(logic[63:0] input_word, logic[7:0] input_ctrl);
         int i;
+
+        scrambler_rdy <= 1'b1;
 
         if (o_xgmii_pause) begin
             i_xgmii_valid <= 1'b0;

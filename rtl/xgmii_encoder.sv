@@ -26,14 +26,12 @@ module xgmii_encoder
     input logic i_xgmii_valid,
     output logic o_xgmii_pause,
 
-    // 64b/66b Encoder to Scrambler Interface
-    output logic o_encoded_data_valid,
-    output logic [DATA_WIDTH-1:0] o_encoded_data,
-    output logic [HDR_WIDTH-1:0] o_sync_hdr,
-    output logic o_encoding_err,
-
-    // Back Pressure from GearBox
-    input logic i_gearbox_pause
+    //64b/66b Encoder to Scrambler Interface
+    output logic [DATA_WIDTH-1:0]   o_tx_data,
+    output logic [HDR_WIDTH-1:0]    o_tx_sync_hdr,
+    output logic                    o_tx_data_valid,
+    output logic                    o_tx_encoding_err,
+    input logic                     i_rx_trdy           
 );
 
 /* XGMII Coded Signals */
@@ -87,7 +85,7 @@ logic [DATA_WIDTH-1:0] encoded_word [1:0];
 logic [1:0] sync_hdr_reg = 2'b0;
 logic encoded_word_select [1:0];
 logic data_valid = 1'b0;
-logic gearbox_pause;
+logic encoder_trdy = 1'b0;
 
 /* Control Registers */
 logic cycle_cntr = 1'b0;
@@ -121,8 +119,9 @@ always_ff @(posedge i_clk)
     if (cycle_cntr)
         sync_hdr_reg <= (|{xgmii_ctrl_payload, i_xgmii_txc}) ? 2'b10 : 2'b01;
 
-always_ff @(posedge i_clk)
-    gearbox_pause <= i_gearbox_pause;
+always_ff @(posedge i_clk) begin
+    encoder_trdy <= i_rx_trdy;
+end
 
 /******************* Initial Word Encoding Logic *******************/
 
@@ -291,9 +290,9 @@ always_ff@(posedge i_clk) begin
 
 end
 
-assign o_encoded_data = encoded_word_select[1] ? encoded_word[1] : encoded_word[0];
-assign o_sync_hdr = sync_hdr_reg;
-assign o_encoded_data_valid = data_valid;
-assign o_xgmii_pause = gearbox_pause;
+assign o_tx_data = encoded_word_select[1] ? encoded_word[1] : encoded_word[0];
+assign o_tx_sync_hdr = sync_hdr_reg;
+assign o_tx_data_valid = data_valid;
+assign o_xgmii_pause = ~encoder_trdy;
 
 endmodule

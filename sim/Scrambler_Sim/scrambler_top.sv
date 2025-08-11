@@ -1,5 +1,7 @@
+`include "../Common/scoreboard_base.sv"
 
-module xgmii_encoder_top;
+
+module scrambler_top;
 
     /* Parameters */
     localparam DATA_WIDTH = 32;
@@ -8,12 +10,19 @@ module xgmii_encoder_top;
     /* Signal Descriptions */
     logic clk;
     logic i_reset_n;
-    logic i_data_valid;
-    logic [DATA_WIDTH-1:0] i_data;
-    logic o_data_valid;
-    logic [DATA_WIDTH-1:0] o_data;
 
+    logic i_rx_data_valid;
+    logic [DATA_WIDTH-1:0] i_rx_data;
+    logic o_tx_trdy;
+    logic o_tx_data_valid;
+    logic [DATA_WIDTH-1:0] o_tx_data;
+    logic i_rx_trdy;
+
+    /* Queue Declarations */
     logic [31:0] tx_queue[$];
+
+    /* Scoreboard Declaration */
+    scoreboard_base scb = new();
 
     /* DUT Instantiation */
     scrambler #(
@@ -23,13 +32,15 @@ module xgmii_encoder_top;
         .i_clk(clk),
         .i_reset_n(i_reset_n),
 
-        // Encoder to Scrambler
-        .i_data_valid(i_data_valid),
-        .i_data(i_data),
+        // Encoder-to-Scrambler Interface
+        .i_rx_data(i_rx_data),
+        .i_rx_data_valid(i_rx_data_valid),
+        .o_tx_trdy(o_tx_trdy),
 
-        // Output to Gearbox
-        .o_data_valid(o_data_valid),
-        .o_data(o_data)
+        // Scrambler-to-Gearbox Interface
+        .o_tx_data(o_tx_data),
+        .o_tx_data_valid(o_tx_data_valid),
+        .i_rx_trdy(i_rx_trdy)
     );
 
     /* Clock Instantiation */
@@ -66,8 +77,8 @@ module xgmii_encoder_top;
         logic [31:0] data_in;
         
         data_in = $urandom;
-        i_data_valid <= 1'b1;
-        i_data <= data_in; 
+        i_rx_data_valid <= 1'b1;
+        i_rx_data <= data_in; 
         tx_queue.push_back(data_in);
         @(posedge clk); 
     endtask : generate_data
@@ -78,24 +89,27 @@ module xgmii_encoder_top;
         logic [31:0] expected_out, input_data;
         logic [57:0] lfsr_golden = {58{1'b1}};
 
-        if (o_data_valid) begin
+        if (o_tx_data_valid & i_rx_trdy) begin
             // Grab data from queue
             input_data = tx_queue.pop_front();
             // Generate expected data
             expected_out = scramble_golden_model(input_data, lfsr_golden);
 
-            assert(o_data == expected_out) 
-            $display("PASSED: Input = 0x%08h, Output = 0x%08h", input_data, o_data);
-            else begin
-                $display("FAILED: Input = 0x%08h, Output = 0x%08h, Expected: %0h", input_data, o_data, expected_out);                
+            assert(o_tx_data == expected_out) begin
+                $display("PASSED: Input = 0x%08h, Output = 0x%08h", input_data, o_tx_data);
+                scb.record_success();
+            end else begin
+                $display("FAILED: Input = 0x%08h, Output = 0x%08h, Expected: %0h", input_data, o_tx_data, expected_out);     
+                scb.record_failure();           
             end
         end
     endfunction: validate_data
 
     /* Stimulus/Test */
     initial begin
-        i_data_valid = 1'b0;
-        i_data = 32'h0;
+        i_rx_data_valid = 1'b0;
+        i_rx_data = 32'h0;
+        i_rx_trdy = 1'b1;
 
         // Initial Reset for design
         i_reset_n = 1'b0; #10;
@@ -107,7 +121,7 @@ module xgmii_encoder_top;
                 for(int i = 0; i < $urandom_range(50, 100); i++) begin                    
                     generate_data();
                 end
-                i_data_valid <= 1'b0;
+                i_rx_data_valid <= 1'b0;
                 @(posedge clk);
             end
             begin
@@ -118,10 +132,12 @@ module xgmii_encoder_top;
             end
         join_any
 
+        scb.print_summary();
+
         #100;
         $finish;
 
     end
 
 
-endmodule : xgmii_encoder_top
+endmodule : scrambler_top

@@ -19,19 +19,25 @@ interface pcs_if
 
 
     /* Task used to drive Data to the PCS via XGMII Interface */
-    task drive_xgmii_data(logic[63:0] input_word, logic[7:0] input_ctrl);
+    task drive_xgmii_data(logic[63:0] input_word, logic[7:0] input_ctrl, ref event data_transmitted);
         int i;
 
-        if (o_xgmii_pause) begin
-            i_xgmii_valid <= 1'b0;
-            @(posedge i_clk);
-        end else begin
-            for(i = 0; i < 2; i++) begin
-                i_xgmii_valid <= 1'b1;
-                i_xgmii_txd   <= input_word[(32*(i+1))-1 -: 32];
-                i_xgmii_txc   <= input_ctrl[(4*(i+1))-1 -: 4];
+        for (i = 0; i < 2; i++) begin
+            
+            // If pause is high, wait before sending this chunk
+            if (o_xgmii_pause) begin
+                i_xgmii_valid <= 1'b0;   // Deassert valid
                 @(posedge i_clk);
+                -> data_transmitted;     // Signal that we "handled" this cycle
             end
+    
+            // Send the chunk
+            i_xgmii_valid <= 1'b1;
+            i_xgmii_txd   <= input_word[(32*(i+1))-1 -: 32];
+            i_xgmii_txc   <= input_ctrl[(4*(i+1))-1 -: 4];
+            @(posedge i_clk);
+            -> data_transmitted;
+    
         end
 
     endtask

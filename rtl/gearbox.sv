@@ -1,21 +1,20 @@
 module gearbox
 #(
-    parameter DATA_WIDTH = 32
+    parameter DATA_WIDTH = 32,
+    parameter HDR_WIDTH = 2
 )
 (
     input logic i_clk,
     input logic i_reset_n,
 
-    // Encoded Data & Header input
-    input logic [DATA_WIDTH-1:0] i_data,
-    input logic i_data_valid,
-    input logic [1:0] i_hdr,
+    // Scrambler-to-Gearbox Interface
+    input logic [DATA_WIDTH-1:0]    i_rx_data,
+    input logic [HDR_WIDTH-1:0]     i_rx_sync_hdr,
+    input logic                     i_rx_data_valid,
+    output logic                    o_tx_trdy,
 
     // Gearbox Data Output
-    output logic [DATA_WIDTH-1:0] o_data,
-
-    // Control signal bback to encoder
-    output logic o_gearbox_pause
+    output logic [DATA_WIDTH-1:0]   o_tx_data
 );
 
 logic [DATA_WIDTH-1:0] data_latch = '0;
@@ -30,15 +29,15 @@ logic [5:0] cntr = 6'b0;
 // --------------------------------------------------------------------
 
 always_ff @(posedge i_clk) begin
-    if(~i_reset_n | ~i_data_valid)
+    if(~i_reset_n | ~i_rx_data_valid)
         cntr <= 6'b0;
     else
         cntr <= cntr + 1;
 end
 
 always_ff @(posedge i_clk) begin
-    data_latch <= i_data;
-    o_gearbox_pause <= (cntr == 6'd30);
+    data_latch <= i_rx_data;
+    o_tx_trdy <= !(cntr == 6'd25);
 end
 
 // ----------------------------------------------------------------------------
@@ -47,7 +46,7 @@ end
 // This gearbox converts 66-bit encoded Ethernet blocks (64 data + 2 header bits)
 // into a continuous stream of 32-bit words without crossing clock domains. The
 // case statement uses the cycle counter (`cntr`) to align and merge incoming
-// 32-bit chunks (`i_data`) and the 2-bit sync header (`i_hdr`) with previously
+// 32-bit chunks (`i_rx_data`) and the 2-bit sync header (`i_rx_sync_hdr`) with previously
 // latched data (`data_latch`), ensuring correct word boundaries on the output.
 //
 // Because input throughput is slightly higher than output throughput
@@ -62,39 +61,39 @@ end
 
 always_comb begin
     case(cntr) 
-        6'd0: o_data = {i_data[29:0], i_hdr};
-        6'd1: o_data = {i_data[29:0], data_latch[31:30]};
-        6'd2: o_data = {i_data[27:0], i_hdr, data_latch[31:30]};
-        6'd3: o_data = {i_data[27:0], data_latch[31:28]};
-        6'd4: o_data = {i_data[25:0], i_hdr, data_latch[31:28]};
-        6'd5: o_data = {i_data[25:0], data_latch[31:26]};
-        6'd6: o_data = {i_data[23:0], i_hdr, data_latch[31:26]};
-        6'd7: o_data = {i_data[23:0], data_latch[31:24]};
-        6'd8: o_data = {i_data[21:0], i_hdr, data_latch[31:24]};
-        6'd9:  o_data = {i_data[21:0], data_latch[31:22]};
-        6'd10: o_data = {i_data[19:0], i_hdr, data_latch[31:22]};
-        6'd11: o_data = {i_data[19:0], data_latch[31:20]};
-        6'd12: o_data = {i_data[17:0], i_hdr, data_latch[31:20]};
-        6'd13: o_data = {i_data[17:0], data_latch[31:18]};
-        6'd14: o_data = {i_data[15:0], i_hdr, data_latch[31:18]};
-        6'd15: o_data = {i_data[15:0], data_latch[31:16]};
-        6'd16: o_data = {i_data[13:0], i_hdr, data_latch[31:16]};
-        6'd17: o_data = {i_data[13:0], data_latch[31:14]};
-        6'd18: o_data = {i_data[11:0], i_hdr, data_latch[31:14]};
-        6'd19: o_data = {i_data[11:0], data_latch[31:12]};
-        6'd20: o_data = {i_data[9:0], i_hdr, data_latch[31:12]};
-        6'd21: o_data = {i_data[9:0], data_latch[31:10]};
-        6'd22: o_data = {i_data[7:0], i_hdr, data_latch[31:10]};
-        6'd23: o_data = {i_data[7:0], data_latch[31:8]};
-        6'd24: o_data = {i_data[5:0], i_hdr, data_latch[31:8]};
-        6'd25: o_data = {i_data[5:0], data_latch[31:6]};
-        6'd26: o_data = {i_data[3:0], i_hdr, data_latch[31:6]};
-        6'd27: o_data = {i_data[3:0], data_latch[31:4]};
-        6'd28: o_data = {i_data[1:0], i_hdr, data_latch[31:4]};
-        6'd29: o_data = {i_data[1:0], data_latch[31:2]};
-        6'd30: o_data = {i_hdr, data_latch[31:2]};
-        6'd31: o_data = data_latch;
-        default: o_data = data_latch;
+        6'd0: o_tx_data = {i_rx_data[29:0], i_rx_sync_hdr};
+        6'd1: o_tx_data = {i_rx_data[29:0], data_latch[31:30]};
+        6'd2: o_tx_data = {i_rx_data[27:0], i_rx_sync_hdr, data_latch[31:30]};
+        6'd3: o_tx_data = {i_rx_data[27:0], data_latch[31:28]};
+        6'd4: o_tx_data = {i_rx_data[25:0], i_rx_sync_hdr, data_latch[31:28]};
+        6'd5: o_tx_data = {i_rx_data[25:0], data_latch[31:26]};
+        6'd6: o_tx_data = {i_rx_data[23:0], i_rx_sync_hdr, data_latch[31:26]};
+        6'd7: o_tx_data = {i_rx_data[23:0], data_latch[31:24]};
+        6'd8: o_tx_data = {i_rx_data[21:0], i_rx_sync_hdr, data_latch[31:24]};
+        6'd9:  o_tx_data = {i_rx_data[21:0], data_latch[31:22]};
+        6'd10: o_tx_data = {i_rx_data[19:0], i_rx_sync_hdr, data_latch[31:22]};
+        6'd11: o_tx_data = {i_rx_data[19:0], data_latch[31:20]};
+        6'd12: o_tx_data = {i_rx_data[17:0], i_rx_sync_hdr, data_latch[31:20]};
+        6'd13: o_tx_data = {i_rx_data[17:0], data_latch[31:18]};
+        6'd14: o_tx_data = {i_rx_data[15:0], i_rx_sync_hdr, data_latch[31:18]};
+        6'd15: o_tx_data = {i_rx_data[15:0], data_latch[31:16]};
+        6'd16: o_tx_data = {i_rx_data[13:0], i_rx_sync_hdr, data_latch[31:16]};
+        6'd17: o_tx_data = {i_rx_data[13:0], data_latch[31:14]};
+        6'd18: o_tx_data = {i_rx_data[11:0], i_rx_sync_hdr, data_latch[31:14]};
+        6'd19: o_tx_data = {i_rx_data[11:0], data_latch[31:12]};
+        6'd20: o_tx_data = {i_rx_data[9:0], i_rx_sync_hdr, data_latch[31:12]};
+        6'd21: o_tx_data = {i_rx_data[9:0], data_latch[31:10]};
+        6'd22: o_tx_data = {i_rx_data[7:0], i_rx_sync_hdr, data_latch[31:10]};
+        6'd23: o_tx_data = {i_rx_data[7:0], data_latch[31:8]};
+        6'd24: o_tx_data = {i_rx_data[5:0], i_rx_sync_hdr, data_latch[31:8]};
+        6'd25: o_tx_data = {i_rx_data[5:0], data_latch[31:6]};
+        6'd26: o_tx_data = {i_rx_data[3:0], i_rx_sync_hdr, data_latch[31:6]};
+        6'd27: o_tx_data = {i_rx_data[3:0], data_latch[31:4]};
+        6'd28: o_tx_data = {i_rx_data[1:0], i_rx_sync_hdr, data_latch[31:4]};
+        6'd29: o_tx_data = {i_rx_data[1:0], data_latch[31:2]};
+        6'd30: o_tx_data = {i_rx_sync_hdr, data_latch[31:2]};
+        6'd31: o_tx_data = data_latch;
+        default: o_tx_data = data_latch;
     endcase
 end
 

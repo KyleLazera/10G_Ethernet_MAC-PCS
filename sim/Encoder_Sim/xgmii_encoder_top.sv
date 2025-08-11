@@ -1,6 +1,7 @@
 
 `include "xgmii_encoder_pkg.sv"
 `include "xgmii_if.sv"
+`include "../Common/scoreboard_base.sv"
 
 import xgmii_encoder_pkg::*;
 
@@ -19,6 +20,8 @@ module xgmii_encoder_top;
     xgmii_if xgmii(clk, i_reset_n) ;
     xgmii_frame_t tx_queue[$], rx_queue[$];
 
+    scoreboard_base scb = new();
+
     /* DUT Instantiation */
     xgmii_encoder#( 
         .DATA_WIDTH(DATA_WIDTH),
@@ -32,12 +35,12 @@ module xgmii_encoder_top;
         .i_xgmii_txc(xgmii.i_xgmii_txc),
         .i_xgmii_valid(xgmii.i_xgmii_valid),
         .o_xgmii_pause(xgmii.o_xgmii_pause),
-        // Scrambler Interface/Encoder Output
-        .o_encoded_data_valid(xgmii.o_encoded_data_valid),
-        .o_encoded_data(xgmii.o_encoded_data),
-        .o_sync_hdr(xgmii.o_sync_hdr),
-        .o_encoding_err(xgmii.o_encoding_err),
-        .i_gearbox_pause()
+        // Scrambler-to-Encoder Interface
+        .o_tx_data(xgmii.o_encoded_data),
+        .o_tx_sync_hdr(xgmii.o_sync_hdr),
+        .o_tx_data_valid(xgmii.o_encoded_data_valid),
+        .o_tx_encoding_err(xgmii.o_encoding_err),
+        .i_rx_trdy(xgmii.scrambler_rdy)
     );
 
     /* Clock Instantiation */
@@ -50,6 +53,7 @@ module xgmii_encoder_top;
 
     /* Stimulus/Test */
     initial begin
+        xgmii.scrambler_rdy = 1'b1;
 
         // Initial Reset for design
         i_reset_n = 1'b0; #10;
@@ -78,14 +82,18 @@ module xgmii_encoder_top;
 
                     xgmii.sample_encoded_data(actual_data);  
 
-                    assert(actual_data == expected_data) 
-                        //$display("MATCH: Expected data matches actual data %0h == %0h", expected_data, actual_data);
-                    else begin
+                    assert(actual_data == expected_data) begin
+                        $display("MATCH: Expected data matches actual data %0h == %0h", expected_data, actual_data);
+                        scb.record_success();
+                    end else begin
                         $display("MISMATCH: Assertion failed! Expected: %0h, Actual: %0h", expected_data, actual_data);
+                        scb.record_failure();
                     end
                 end
             end
         join_any  
+
+        scb.print_summary();
 
         #100;
         $finish;

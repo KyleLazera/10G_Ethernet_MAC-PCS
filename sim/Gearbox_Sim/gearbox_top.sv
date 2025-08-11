@@ -21,11 +21,13 @@ module gearbox_top;
     /* Signal Declarations */
     logic clk;
     logic reset_n;
-    logic [DUT_DATA_WIDTH-1:0] data_in;
-    logic data_valid;
-    logic [1:0] sync_hdr;
-    logic [DUT_DATA_WIDTH-1:0] data_out;
-    logic gearbox_pause;
+    // Scrambler-to-Gearbox Interface
+    logic [DATA_WIDTH-1:0] i_rx_data;
+    logic [HDR_WIDTH-1:0] i_rx_sync_hdr;
+    logic i_rx_data_valid;
+    logic o_tx_trdy;
+    // Gearbox Data Output
+    logic [DATA_WIDTH-1:0] o_tx_data;
 
     /* Class Instantiations */
     scoreboard_base scb = new();
@@ -34,28 +36,28 @@ module gearbox_top;
     gearbox #(.DATA_WIDTH(DUT_DATA_WIDTH)) DUT(
         .i_clk(clk),
         .i_reset_n(reset_n),
-        .i_data(data_in),
-        .i_data_valid(data_valid),
-        .i_hdr(sync_hdr),
-        .o_data(data_out),
-        .o_gearbox_pause(gearbox_pause)
+        .i_rx_data(i_rx_data),
+        .i_rx_sync_hdr(i_rx_sync_hdr),
+        .i_rx_data_valid(i_rx_data_valid),
+        .o_tx_trdy(o_tx_trdy),
+        .o_tx_data(o_tx_data)
     );
 
     /* Drive/Read Stimulus Tasks */
     task drive_data(encoded_data_t tx_data);
 
-        // If gearbox_pause signal is high, wait for it to go low
-        if (gearbox_pause) begin
-            data_valid <= 1'b0;
+        // If gearbox is not ready, wait for it to go low
+        if (!o_tx_trdy) begin
+            i_rx_data_valid <= 1'b0;
             @(posedge clk);
             ->data_transmitted;
         end 
 
-        data_valid <= 1'b1;
+        i_rx_data_valid <= 1'b1;
 
         foreach(tx_data.data_word[i]) begin
-            sync_hdr <= tx_data.sync_hdr;
-            data_in <= tx_data.data_word[i];
+            i_rx_sync_hdr <= tx_data.sync_hdr;
+            i_rx_data <= tx_data.data_word[i];
             @(posedge clk);
             ->data_transmitted;
         end 
@@ -74,7 +76,7 @@ module gearbox_top;
 
             // Pack the 32 bits into a vector for comparison
             ref_data_packed = {>>{ref_data_unpacked}};
-            rx_data = data_out;
+            rx_data = o_tx_data;
 
             // Compare the current output data to the reference/expected data 
             assert(ref_data_packed == rx_data) begin
@@ -100,9 +102,9 @@ module gearbox_top;
     initial begin
 
         // Initial signal values
-        data_valid = 1'b0;
-        sync_hdr = 2'b0;
-        data_in = 32'b0;
+        i_rx_data_valid = 1'b0;
+        i_rx_sync_hdr = 2'b0;
+        i_rx_data = 32'b0;
 
         // Initial Reset for design
         reset_n = 1'b0; #10;

@@ -31,17 +31,30 @@ package pcs_pkg;
         logic [ENCODED_BLOCK_WIDTH-1:0] encoded_data_66b;
         logic [57:0] lfsr_golden = {58{1'b1}};
 
+        $display("Raw Data Frame: %0h", xgmii_frame.data_word);
+
         // 1) Encode the Data with 64b/66b encoding 
         encoded_data_66b = encode_data(xgmii_frame.data_word, xgmii_frame.ctrl_word);
+
+        $display("Encoded Data Frame: %0h", encoded_data_66b);
 
         // Split the 66-bit word into synch header and 2, 32-bit words
         encoded_data_32b = split_66_bit_frame(encoded_data_66b);
 
+        $display("Data Frame Break down:");
+        $display("Header: %0h", encoded_data_32b.sync_hdr);
+        $display("Word 1: %0h", encoded_data_32b.data_word[1]);
+        $display("Word 0: %0h", encoded_data_32b.data_word[0]);
+
         // 2) Scramble the data words (not the sync header)
         scrambled_data_32b.sync_hdr = encoded_data_32b.sync_hdr;
-        foreach(scrambled_data_32b.data_word[i]) begin
+        for(int i = 0; i < 2; i++) begin
             scrambled_data_32b.data_word[i] = scramble_golden_model(encoded_data_32b.data_word[i], lfsr_golden);
         end
+
+        $display("Scrambled Data:");
+        $display("Word 1: %0h", scrambled_data_32b.data_word[1]);
+        $display("Word 0: %0h", scrambled_data_32b.data_word[0]);
 
         // 3) Store serial data in the gearbox model
         gearbox_ref_model(scrambled_data_32b, pcs_ref_model);
@@ -115,7 +128,7 @@ package pcs_pkg;
         pcs_model.push_front(scrambler_data.sync_hdr[0]);
         pcs_model.push_front(scrambler_data.sync_hdr[1]);
 
-        foreach(scrambler_data.data_word[i]) begin
+        for(int i = 0; i < 2; i++) begin
             for(int j = 0; j < 32; j++)
                 pcs_model.push_front(scrambler_data.data_word[i][j]);
             end

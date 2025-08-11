@@ -27,33 +27,31 @@ package pcs_testcases;
             // Transmission thread
             begin
                 foreach (tx_queue[i]) begin
-                    xgmii_frame_t tx_data = tx_queue.pop_back();
-
-                    pcs.drive_xgmii_data(tx_data.data_word, tx_data.ctrl_word);
-                    pcs_golden_model(tx_data);
-                    ->data_transmitted;
+                    pcs.drive_xgmii_data(tx_queue[i].data_word, tx_queue[i].ctrl_word, data_transmitted);
+                    pcs_golden_model(tx_queue[i]);
                 end
             end
 
             // Reception thread
             begin
                 logic [DATA_WIDTH-1:0] sampled_data;
-
-                // Implement a 2 clock cycle latency delay at start
-                @(data_transmitted);
-                @(posedge pcs.i_clk);
-                //@(posedge pcs.i_clk);
-
-                pcs.sample_gty_tx_data(sampled_data);
-                validate_data(sampled_data);
+                int tx_cntr = 0;
 
                 while (1) begin
                     @(data_transmitted);
                     pcs.sample_gty_tx_data(sampled_data);
-                    validate_data(sampled_data);
+                    // The PCS does not output a data valid signal, therefore, to ensure we are validating
+                    // correct data, we need to account for the latency from the time data is transmitted
+                    // into the PCS to the time data is transmitted out of the PCS. To do this, we ignore
+                    // the first 2 transmissions.
+                    if (tx_cntr > 2)
+                        validate_data(sampled_data);
+                    tx_cntr++;
                 end
             end
         join_any
+
+        scb.print_summary();
     endtask
 
 endpackage : pcs_testcases

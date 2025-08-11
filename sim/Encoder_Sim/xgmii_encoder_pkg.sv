@@ -294,7 +294,7 @@ package xgmii_encoder_pkg;
      *      term_type: Lane to end in
      *      tx_queue: Queue to store the data in 
      */
-    function automatic generate_frame(logic [7:0] start_type, logic [7:0] term_type, ref xgmii_frame_t tx_queue[$]);
+    function void generate_frame(logic [7:0] start_type, logic [7:0] term_type, ref xgmii_frame_t tx_queue[$]);
         int i;
         int num_data_words, num_idle_words;
 
@@ -327,7 +327,7 @@ package xgmii_encoder_pkg;
     //  3) Terminate Lane 0 - 7
     //  4) Idle frames
     /////////////////////////////////////////////////////////////////////
-    function automatic sanity_test(output xgmii_frame_t tx_queue[$]);
+    function void sanity_test(output xgmii_frame_t tx_queue[$]);
 
         xgmii_frame_t data;
 
