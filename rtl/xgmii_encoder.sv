@@ -35,39 +35,13 @@ module xgmii_encoder
 );
 
 /* XGMII Coded Signals */
-localparam XGMII_IDLE   = 8'h07,
-           XGMII_LPI    = 8'h06,
-           XGMII_START  = 8'hFB,
-           XGMII_TERM   = 8'hFD,
-           XGMII_ERROR  = 8'hFE,
-           XGMII_SEQ_OS = 8'h9C,
-           XGMII_RES_0  = 8'h1C,
-           XGMII_RES_1  = 8'h3C,
-           XGMII_RES_2  = 8'h7C,
-           XGMII_RES_3  = 8'hBC,
-           XGMII_RES_4  = 8'hDC,
-           XGMII_RES_5  = 8'hF7,
-           XGMII_SIG_OS = 8'h5C;
-
-/* 10G-BASER Control COdes */
-localparam CTRL_IDLE  = 7'h00,
-           CTRL_LPI   = 7'h06,
-           CTRL_ERROR = 7'h1E,
-           CTRL_RES_0 = 7'h2D,
-           CTRL_RES_1 = 7'h33,
-           CTRL_RES_2 = 7'h4B,
-           CTRL_RES_3 = 7'h55,
-           CTRL_RES_4 = 7'h66,
-           CTRL_RES_5 = 7'h78;
+localparam XGMII_START  = 8'hFB,
+           XGMII_TERM   = 8'hFD;
 
 /* 64b/66b Block Type Fields */
 localparam BLOCK_CTRL = 8'h1E,      // C0 C1 C2 C3 C4 C5 C6 C7
-           BLOCK_OS_4 = 8'h2D,      // C0 C1 C2 C3 04 D5 D6 D7
            BLOCK_START_4 = 8'h33,   // C0 C1 C2 C3 S4 D5 D6 D7
-           BLOCK_START_4_OS = 8'h66, // O0 D1 D2 D3 S4 D5 D6 D7
-           BLOCK_OS_0_4 = 8'h55,     // O0 D1 D2 D3 04 D5 D6 D7
-           BLOCK_START_0 = 8'h78,   // S0 D1 D2 D3 D4 D5 D6 D7
-           BLOCK_OS_0 = 8'h4B,      // O0 D1 D2 D3 C4 C5 C6 C7   
+           BLOCK_START_0 = 8'h78,   // S0 D1 D2 D3 D4 D5 D6 D7  
            BLOCK_TERM_0 = 8'h87,    // T0 C1 C2 C3 C4 C5 C6 C7
            BLOCK_TERM_1 = 8'h99,    // D0 T1 C2 C3 C4 C5 C6 C7
            BLOCK_TERM_2 = 8'hAA,    // D0 D1 T2 C3 C4 C5 C6 C7
@@ -122,6 +96,7 @@ always_ff @(posedge i_clk)
 always_ff @(posedge i_clk) begin
     encoder_trdy <= i_rx_trdy;
 end
+
 
 /******************* Initial Word Encoding Logic *******************/
 

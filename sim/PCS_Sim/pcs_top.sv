@@ -46,7 +46,8 @@ module pcs_top;
         @(posedge clk)
         reset_n = 1'b1;
 
-        test_sanity(pcs);
+        //test_sanity(pcs);
+        test_fuzz(pcs);
 
         #100;
         $finish;

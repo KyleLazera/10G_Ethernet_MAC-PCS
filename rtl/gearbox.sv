@@ -35,6 +35,15 @@ always_ff @(posedge i_clk) begin
         cntr <= cntr + 1;
 end
 
+// --------------------------------------------------------------------
+// o_tx_rdy indicates whether the gearbox is ready or we need an idle cycle.
+// The value is normally high, but on the 27th cycle, it goes low. This allow
+// to signal to propogate back down-stream to the scrambler, encoder and MAC, 
+// and then allows the MAC to transmit an idle cycle which arrives at exactly 
+// the 33rd cycle. This works because it takes 3 clock cycles for the sgnal
+// to reach the MAC, and then 3 clock cycles for teh idle cycle to reach the
+// gearbox again.
+// --------------------------------------------------------------------
 always_ff @(posedge i_clk) begin
     data_latch <= i_rx_data;
     o_tx_trdy <= !(cntr == 6'd25);

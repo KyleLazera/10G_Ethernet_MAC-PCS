@@ -298,7 +298,7 @@ package xgmii_encoder_pkg;
         int i;
         int num_data_words, num_idle_words;
 
-        num_data_words = $urandom_range(5, 10);
+        num_data_words = $urandom_range(50, 100);
         num_idle_words = $urandom_range(5, 10);
 
         // Queue Start Frame
@@ -328,8 +328,6 @@ package xgmii_encoder_pkg;
     //  4) Idle frames
     /////////////////////////////////////////////////////////////////////
     function void sanity_test(output xgmii_frame_t tx_queue[$]);
-
-        xgmii_frame_t data;
 
         /* Start Lane 4 and terminate in lane 0 */
         generate_frame(BLOCK_START_4, BLOCK_TERM_0, tx_queue);
@@ -373,6 +371,40 @@ package xgmii_encoder_pkg;
                 
 
     endfunction : sanity_test
+
+    function void fuzz_test(output xgmii_frame_t tx_queue[$]);
+
+        int start_condition_rand, stop_condition_rand;
+        logic [7:0] start_block, term_block;
+
+        repeat(100) begin
+            // Randomly select the position to generate a start condition
+            start_condition_rand = $urandom_range(0,1);
+
+            case(start_condition_rand)
+                0: start_block = BLOCK_START_0;
+                1: start_block = BLOCK_START_4;
+            endcase
+
+            // Randomize teh terminate position
+            stop_condition_rand = $urandom_range(0,7);
+
+            case(stop_condition_rand)
+                0: term_block = BLOCK_TERM_0;
+                1: term_block = BLOCK_TERM_1;
+                2: term_block = BLOCK_TERM_2;
+                3: term_block = BLOCK_TERM_3;
+                4: term_block = BLOCK_TERM_4;
+                5: term_block = BLOCK_TERM_5;
+                6: term_block = BLOCK_TERM_6;
+                7: term_block = BLOCK_TERM_7;
+            endcase
+
+            // Generate the frame with teh randomized conditions
+            generate_frame(start_block, term_block, tx_queue);
+        end
+
+    endfunction : fuzz_test
 
 
 endpackage : xgmii_encoder_pkg

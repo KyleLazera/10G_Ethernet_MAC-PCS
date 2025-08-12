@@ -18,6 +18,9 @@ module gearbox_top;
     /* Parameters */
     localparam DUT_DATA_WIDTH = 32;
 
+    /* Variables */
+    int cycle_cntr = 0;
+
     /* Signal Declarations */
     logic clk;
     logic reset_n;
@@ -46,20 +49,36 @@ module gearbox_top;
     /* Drive/Read Stimulus Tasks */
     task drive_data(encoded_data_t tx_data);
 
-        // If gearbox is not ready, wait for it to go low
-        if (!o_tx_trdy) begin
-            i_rx_data_valid <= 1'b0;
-            @(posedge clk);
-            ->data_transmitted;
-        end 
-
-        i_rx_data_valid <= 1'b1;
-
+        // ---------------------------------------------------------
+        // When the gearbox o_tx_rdy signal goes low, this indicates
+        // we need an idle cycle. However, in this design, we lower
+        // the signal 6 clock cycles in advance. This allows the 
+        // signal to propogate to the MAC, and then gives time for the 
+        // idle cycle to propogate back to the gearbox and arrive exactly
+        // on the 33rd transmission. Therefore, we use a cycle cntr to 
+        // determine when to lower the valid flag.
+        // ---------------------------------------------------------
         foreach(tx_data.data_word[i]) begin
+
+            // If gearbox is not ready, set cycle counter to 6
+            if (!o_tx_trdy) begin
+                cycle_cntr = 6;
+            end else if(cycle_cntr == 1) begin
+                i_rx_data_valid <= 1'b0;
+                @(posedge clk);
+                ->data_transmitted;
+            end
+
+            i_rx_data_valid <= 1'b1;
+
+        
             i_rx_sync_hdr <= tx_data.sync_hdr;
             i_rx_data <= tx_data.data_word[i];
             @(posedge clk);
             ->data_transmitted;
+
+            if (cycle_cntr > 0)
+                cycle_cntr--;
         end 
 
     endtask : drive_data
