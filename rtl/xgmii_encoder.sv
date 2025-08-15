@@ -164,7 +164,6 @@ logic send_term_lane_6;
 logic send_term_lane_7;
 
 logic encoded_data_valid_reg = 1'b0;
-logic send_idle_frame_reg = 1'b0;
 logic send_start_lane_0_reg = 1'b0;
 logic send_start_lane_4_reg = 1'b0;
 logic send_term_lane_0_reg = 1'b0;
@@ -212,7 +211,6 @@ assign send_term_lane_7 = cycle_cntr & stop_3_frame_comb & data_frame_reg;
 // -----------------------------------------------------------------------------
 always_ff@(posedge i_clk) begin
     encoded_data_valid_reg <= encoded_data_valid;
-    send_idle_frame_reg <= send_idle_frame;
     send_start_lane_0_reg <= send_start_lane_0;
     send_start_lane_4_reg <= send_start_lane_4;
     send_term_lane_0_reg <= send_term_lane_0;

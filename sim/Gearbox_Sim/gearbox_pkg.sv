@@ -5,8 +5,12 @@ package gearbox_pkg;
     parameter DATA_WIDTH = 32;
     parameter HDR_WIDTH = 2;
 
+    // If set to 1, we use the temp queue
+    parameter USE_TEMP_QUEUE = 0;
+
     /* Queue Declarations */
     logic ref_model[$];
+    logic temp_queue[$];
 
     /* Synchronization Events */
     event data_transmitted;
@@ -45,10 +49,17 @@ package gearbox_pkg;
         ref_model.push_front(encoded_data.sync_hdr[0]);
         ref_model.push_front(encoded_data.sync_hdr[1]);
 
+        if (USE_TEMP_QUEUE) begin
+            temp_queue.push_front(encoded_data.sync_hdr[0]);
+            temp_queue.push_front(encoded_data.sync_hdr[1]);
+        end
+
         foreach(encoded_data.data_word[i]) begin
             encoded_data.data_word[i] = $urandom();
             for(int j = 0; j < 32; j++)
                 ref_model.push_front(encoded_data.data_word[i][j]);
+                if (USE_TEMP_QUEUE)
+                    temp_queue.push_front(encoded_data.data_word[i][j]);
             end
 
         // Return the 66 bit data to be passed to the DUT
