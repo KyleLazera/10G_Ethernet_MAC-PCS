@@ -69,11 +69,6 @@ module block_sync_top;
         // Fetch the expected data from the reference queue
         rx_expected_block = ref_model.pop_back();
 
-        foreach(rx_expected_block.data_word[i])
-            $display("Rx Expected Data [%d]: %0h", i, rx_expected_block.data_word[i]); 
-
-        $display("Sync Header expected: %0h", rx_expected_block.sync_hdr);                      
-
         for(i = 0; i < 2; i++) begin
             
             @(posedge clk iff o_data_valid);                    
@@ -129,7 +124,7 @@ module block_sync_top;
 
         fork
             begin
-                repeat(36) begin
+                repeat(500) begin
                     drive_data();                    
                 end
             end

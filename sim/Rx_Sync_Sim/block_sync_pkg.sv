@@ -46,10 +46,6 @@ package block_sync_pkg;
                 data_stream.push_front(data.data_word[i][j]);
         end
 
-
-        $display("Data Packet transmitted: %0h", {data.data_word[1], data.data_word[0], data.sync_hdr});
-        $display("Data Packet wihtout header: %0h", {data.data_word[1], data.data_word[0]});
-
         // Append generated data to ref queue
         ref_model.push_front(data);
 
