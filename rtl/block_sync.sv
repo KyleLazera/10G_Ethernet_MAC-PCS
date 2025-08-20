@@ -178,8 +178,8 @@ end
 
 /* --------------------- Output Logic --------------------- */
 
-assign o_tx_data = (even) ? rx_data_buff[33:2] : rx_data_buff[65:34];
-assign o_tx_sync_hdr = rx_data_buff[1:0];
+assign o_tx_data = (even) ? rx_comb_buff[65:34] : rx_comb_buff[33:2];
+assign o_tx_sync_hdr = rx_comb_buff[1:0];
 assign o_tx_data_valid = (seq_cntr != '0);
 
 endmodule
