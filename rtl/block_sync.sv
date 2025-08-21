@@ -7,8 +7,8 @@
 // 66 is not divisible by 32, so consecutive 32-bit words will not align perfectly
 // with 66-bit block boundaries. This means we can't just shift data in and output every
 // 32 bit word. Instead, we must intentionally position bits in a circular buffer so that every block
-// is correctly aligned. The reason it must be circular, is because we need to be able to
-// wrap some of the data around as explained below.
+// is correctly aligned. The reason it must be circular, is because we need to wrap
+// some of the data around as explained below.
 //
 // --------------------------------------------------------------------------------------------
 // 66B BLOCK FORMAT:
@@ -116,23 +116,53 @@ initial begin
     index_lut[0] = 7'd0;
     index_lut[1] = 7'd32;
     index_lut[2] = 7'd64;
-
-    // Use equation derived to compute the remaining values
-    for(int i = 3; i < 33; i++)
-        index_lut[i] = index_lut[i-2] - 2;
+    index_lut[3] = 7'd30;
+    index_lut[4] = 7'd62;
+    index_lut[5] = 7'd28;
+    index_lut[6] = 7'd60;
+    index_lut[7] = 7'd26;
+    index_lut[8] = 7'd58;
+    index_lut[9] = 7'd24;
+    index_lut[10] = 7'd56;
+    index_lut[11] = 7'd22;
+    index_lut[12] = 7'd54;
+    index_lut[13] = 7'd20;
+    index_lut[14] = 7'd52;
+    index_lut[15] = 7'd18;
+    index_lut[16] = 7'd50;
+    index_lut[17] = 7'd16;
+    index_lut[18] = 7'd48;
+    index_lut[19] = 7'd14;
+    index_lut[20] = 7'd46;
+    index_lut[21] = 7'd12;
+    index_lut[22] = 7'd44;
+    index_lut[23] = 7'd10;
+    index_lut[24] = 7'd42;
+    index_lut[25] = 7'd8;
+    index_lut[26] = 7'd40;
+    index_lut[27] = 7'd6;
+    index_lut[28] = 7'd38;
+    index_lut[29] = 7'd4;
+    index_lut[30] = 7'd36;
+    index_lut[31] = 7'd2;
+    index_lut[32] = 7'd34;
 
 end
 
-/* --------------------- Cycle Counter Logic --------------------- */ 
+/* --------------------- Cycle/Slip Counter Logic --------------------- */ 
 
 logic [CNTR_WIDTH-1:0]  seq_cntr = '0;
+logic [6:0] slip_cntr = '0;
 
 always_ff @(posedge i_clk) begin
-    if(!i_reset_n) 
+    if(!i_reset_n) begin 
         seq_cntr <= '0;
-    else begin
-        //TODO: We do not want to shift the seq counter if i_slip is high
+        slip_cntr <= '0;
+    end else begin
         seq_cntr <= (seq_cntr == 6'd32) ? '0 : seq_cntr + 1;
+
+        if (i_slip)
+            slip_cntr <= slip_cntr + 1;
     end
 end
 
@@ -140,46 +170,58 @@ end
 
 logic                   even; 
 logic [BUF_SIZE-1:0]    rx_data_buff = '0;
-logic [BUF_SIZE-1:0]    rx_comb_buff;
+logic [(BUF_SIZE*2)-1:0]rx_comb_buff;
 logic [6:0]             buffer_ptr;
-
-genvar i;
 
 assign even = !seq_cntr[0];
 assign buffer_ptr = index_lut[seq_cntr];
 
 generate
-    for(i = 0; i < DATA_WIDTH; i++) begin
-        always_comb begin
+    always_comb begin
 
-            // Even seq counter indicates we are either adding the first or third word
-            // to the buffer, so we need to be able to handle overflow
-            if (even) begin
-                // Overflow Condition 
-                if ((i+buffer_ptr >= BUF_SIZE) & (seq_cntr != '0))
-                    rx_comb_buff[buffer_ptr-BUF_SIZE+i] = i_rx_data[i];
-                // No overflow Condition
-                else
-                    rx_comb_buff[buffer_ptr + i] = i_rx_data[i];
-            // On odd seq counter values, we are always adding the second word, so we do not
-            // run the risk of overflow
-            end else begin
+        rx_comb_buff[BUF_SIZE-1:0] = rx_data_buff;
+
+        for(int i = 0; i < DATA_WIDTH; i++) begin
+            // Wrap around logic
+            if((i + buffer_ptr >= BUF_SIZE))
+                rx_comb_buff[(buffer_ptr + i) - BUF_SIZE] = i_rx_data[i];
+            // Non-wrap around logic 
+            else
                 rx_comb_buff[buffer_ptr + i] = i_rx_data[i];
-            end
         end
-    end
 
+        rx_comb_buff[(BUF_SIZE*2)-1:BUF_SIZE] = rx_comb_buff[BUF_SIZE-1:0];
+
+    end
 endgenerate
 
 /* Latch the buffer data */
 always_ff @(posedge i_clk) begin
-    rx_data_buff <= rx_comb_buff;
+    rx_data_buff <= rx_comb_buff[BUF_SIZE-1:0];
 end
+
+/* --------------------- Parallel Computation Logic --------------------- */ 
+
+logic [HDR_WIDTH-1:0] hdr_parallel_comp [BUF_SIZE-1:0];
+logic [DATA_WIDTH-1:0] even_data_parallel [BUF_SIZE-1:0];
+logic [DATA_WIDTH-1:0] odd_data_parallel [BUF_SIZE-1:0];
+
+genvar j;
+
+generate
+
+    for(j = 0; j < BUF_SIZE; j++) begin
+        assign hdr_parallel_comp[j] = rx_comb_buff[(j+1) -: 2];
+        assign odd_data_parallel[j] = rx_comb_buff[(j+33) -: 32];
+        assign even_data_parallel[j] = rx_comb_buff[(j+65) -: 32];
+    end
+
+endgenerate
 
 /* --------------------- Output Logic --------------------- */
 
-assign o_tx_data = (even) ? rx_comb_buff[65:34] : rx_comb_buff[33:2];
-assign o_tx_sync_hdr = rx_comb_buff[1:0];
+assign o_tx_data = (even) ? even_data_parallel[slip_cntr] : odd_data_parallel[slip_cntr];
+assign o_tx_sync_hdr = hdr_parallel_comp[slip_cntr];
 assign o_tx_data_valid = (seq_cntr != '0);
 
 endmodule

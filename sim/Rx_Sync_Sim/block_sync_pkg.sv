@@ -1,10 +1,20 @@
-
-
 package block_sync_pkg;
+
+    `include "../Common/scoreboard_base.sv"
 
     /* Parameters */
     parameter DATA_WIDTH = 32;
     parameter HDR_WIDTH = 2;
+
+    /* Data Queues */
+    logic ref_model[$];
+    logic data_stream[$];
+
+    /* Synchronization Events */
+    event data_transmitted;
+
+    /* Scoreboard class Init */
+    scoreboard_base scb = new();
 
     /* Variables/Structs */
     typedef struct{
@@ -12,12 +22,7 @@ package block_sync_pkg;
         logic [DATA_WIDTH-1:0] data_word [1:0];
     } encoded_data_t;
 
-    /* Data Queues */
-    encoded_data_t ref_model[$];
-    logic data_stream[$];
-
-    /* Synchronization Events */
-    event data_transmitted;
+    int slip_set;
 
     //---------------------------------------------------------------------
     // This function generates a 66 bit block of data in the format output
@@ -39,17 +44,96 @@ package block_sync_pkg;
         data_stream.push_front(data.sync_hdr[0]);
         data_stream.push_front(data.sync_hdr[1]);
 
+        ref_model.push_front(data.sync_hdr[0]);
+        ref_model.push_front(data.sync_hdr[1]);        
+
         // Randomize data words and push into data stream queue
         for(i = 0; i < 2; i++) begin
             data.data_word[i] = $urandom;
-            for(j = 0; j < 32; j++)
+            for(j = 0; j < 32; j++) begin
                 data_stream.push_front(data.data_word[i][j]);
+                ref_model.push_front(data.data_word[i][j]);
+            end
         end
 
-        // Append generated data to ref queue
-        ref_model.push_front(data);
-
     endfunction : generate_66b_block
+
+    //---------------------------------------------------------------------
+    // Helper function that is used to randomize the probability of setting
+    // the i_slip input to the design. This function randomizes this with a 
+    // 10% probability of being set on each occasion.
+    //---------------------------------------------------------------------    
+    function bit set_slip();
+        int rand_num;
+
+        rand_num = $urandom_range(1, 10);
+
+        slip_set = (rand_num == 10);
+        
+        return slip_set;
+    endfunction : set_slip
+
+    //---------------------------------------------------------------------
+    // This function is used to fetch and format the reference data into 
+    // the 64/66b encoded data block:
+    //
+    //  {data[65:2], hdr[1:0]}
+    //
+    // It encapsulates the data within a struct and returns the struct for 
+    // further validation.
+    //---------------------------------------------------------------------      
+    function encoded_data_t get_ref_data(bit i_slip);
+
+        logic [65:0] rx_expected_block;
+        encoded_data_t ref_data;
+
+        int i;
+
+        // If slip is set, we should discard the top bit of the header/word
+        if (i_slip)
+            ref_model.pop_back();
+
+        // Generate a 66-bit word from ref-model for verification
+        for(i = 0; i < 66; i++)
+            rx_expected_block[i] = ref_model.pop_back();   
+
+        // Break 66 bit block into individual components & encapsulate
+        ref_data.sync_hdr = rx_expected_block[1:0];
+        ref_data.data_word[0] = rx_expected_block[33:2];
+        ref_data.data_word[1] = rx_expected_block[65:34];    
+
+        return ref_data;    
+
+    endfunction : get_ref_data
+
+    //---------------------------------------------------------------------
+    // Simple validation function used to validate header and send the validation
+    // results to the scoreboard for logging.
+    //---------------------------------------------------------------------    
+    function validate_hdr(logic [1:0] expected_hdr, logic [1:0] actual_hdr);
+        assert(expected_hdr == actual_hdr) begin
+            $display("MATCH: Header expected: %0h == Actual header: %0h", expected_hdr, actual_hdr);
+            scb.record_success();
+        end else begin
+            $display("MISMATCH: Header expected: %0h != Actual header: %0h", expected_hdr, actual_hdr);
+            scb.record_failure();
+        end        
+    endfunction : validate_hdr
+
+    //---------------------------------------------------------------------
+    // Simple validation function used to validate data words and send the validation
+    // results to the scoreboard for logging.
+    //---------------------------------------------------------------------    
+    function validate_data(logic [DATA_WIDTH-1:0] expected_data [1:0], logic [DATA_WIDTH-1:0] actual_data [1:0]);
+        foreach(actual_data[i])
+            assert(expected_data[i] == actual_data[i]) begin
+                $display("MATCH: Expected Data[%0d]: %0h == Actual Data[%0d]: %0h", i, expected_data[i], i, actual_data[i]);
+                scb.record_success();
+            end else begin
+                $display("MISMATCH: Expected Data[%0d]: %0h != Actual Data[%0d]: %0h", i, expected_data[i], i, actual_data[i]);   
+                scb.record_failure();     
+            end
+    endfunction : validate_data
 
 
 endpackage : block_sync_pkg

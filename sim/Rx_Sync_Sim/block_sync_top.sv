@@ -1,5 +1,4 @@
 `include "block_sync_pkg.sv"
-`include "../Common/scoreboard_base.sv"
 
 module block_sync_top;
 
@@ -20,8 +19,6 @@ module block_sync_top;
     logic i_slip;
     logic [DUT_DATA_WIDTH-1:0] i_data;
 
-    scoreboard_base scb = new();
-
     /* DUT Instantiation */
     block_sync #(
         .DATA_WIDTH(DUT_DATA_WIDTH),
@@ -40,7 +37,9 @@ module block_sync_top;
     task drive_data();
         logic [DUT_DATA_WIDTH-1:0] data_vector;
         int i;
-        
+
+        // The i_slip input is set to 1'b1 with a 10% probability
+        // to make this more realistic to the actual design.        
         i_slip = 1'b0;
 
         // Generate encoded data - this populates the data_stream queue
@@ -51,7 +50,7 @@ module block_sync_top;
         for(i = 0; i < 32; i++)
             data_vector[i] = data_stream.pop_back();
         
-        // Transmit the data with the least significant word first
+        // Transmit the data 
         i_data <= data_vector;
         @(posedge clk);
     
@@ -59,15 +58,16 @@ module block_sync_top;
 
     /* Read Stimulus */
     task read_data();
-        encoded_data_t rx_expected_block;
-
-        int i;
 
         logic [HDR_WIDTH-1:0] o_hdr;
         logic [DUT_DATA_WIDTH-1:0] o_data_word [1:0];
 
-        // Fetch the expected data from the reference queue
-        rx_expected_block = ref_model.pop_back();
+        encoded_data_t ref_data;
+
+        int i;
+
+        // Get reference data for validation
+        ref_data = get_ref_data(slip_set);        
 
         for(i = 0; i < 2; i++) begin
             
@@ -81,25 +81,9 @@ module block_sync_top;
             o_data_word[i] = o_data;
         end
 
-        // Validate Header Data First 
-        assert(o_hdr == rx_expected_block.sync_hdr) begin
-            $display("MATCH: Header expected: %0h == Actual header: %0h", rx_expected_block.sync_hdr, o_hdr);
-            scb.record_success();
-        end else begin
-            $display("MISMATCH: Header expected: %0h != Actual header: %0h", rx_expected_block.sync_hdr, o_hdr);
-            scb.record_failure();
-        end
-            
-
-        // Validate the data words
-        foreach(rx_expected_block.data_word[i])
-            assert(o_data_word[i] == rx_expected_block.data_word[i]) begin
-                $display("MATCH: Expected Data[%0d]: %0h == Actual Data[%0d]: %0h", i, rx_expected_block.data_word[i], i, o_data_word[i]);
-                scb.record_success();
-            end else begin
-                $display("MISMATCH: Expected Data[%0d]: %0h != Actual Data[%0d]: %0h", i, rx_expected_block.data_word[i], i, o_data_word[i]);   
-                scb.record_failure();     
-            end
+        /* ------- Validation Logic ------- */ 
+        validate_hdr(ref_data.sync_hdr, o_hdr);
+        validate_data(ref_data.data_word, o_data_word);
 
     endtask : read_data
 
