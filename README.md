@@ -5,8 +5,12 @@
  - [Design Overview](#design-overview)
     - [10Gbps Throughput](#10gbps-throughput)
     - [Low-Latency Design](#low-latency-design)
-        - [Encoder Design](#encoder-design)
-        - [GearBox Design](#gearbox-design)
+ - [Module Designs](#module-designs)
+     - [TX Encoder](#tx-encoder)
+     - [TX GearBox](#tx-gearbox)
+     - [RX Gearbox](#rx-gearbox)
+        - [Re-Aligning Data](#re-aligning-data)
+        - [Re-Aligning Algorithm](#re-aligning-algorithm)
 
 ## Project Motivation
 This project serves as an extension of the UDP/IP Ethernet stack I developed in a previous project:  
@@ -59,7 +63,11 @@ Therefore:
 
     10.3125Gbps/32 = ~322MHz
 
-#### Encoder Design
+## Module Designs
+
+This section provides an overview of each module used within the 10G Ethernet design and goes over the design challenges associated with each.
+
+### TX Encoder
 
 With this in mind, the encoder will receive 32-bit data blocks and 4 bits of control data over the XGMII interface, operating at approximately 322 MHz. However, the encoder must produce 64-bit encoded blocks with a 2-bit header for 64b/66b encoding.
 
@@ -70,7 +78,7 @@ Clock Frequency = 10.3125 Gbps / 64 bits ≈ 161 MHz
 However, this would introduce additional latency due to the clock domain crossing (CDC), which is undesirable for a low-latency design.
 Instead, a more efficient solution is to design the encoder to operate entirely at 322 MHz using 32-bit input and output blocks. While this increases logic complexity slightly compared to a pure 64-bit datapath, it eliminates unnecessary latency caused by CDC and keeps the entire data path running synchronously, ensuring a low-latency, high-speed design.
 
-### Gearbox Design
+## TX Gearbox 
 
 In this project, a 32-bit data path is used to move data through the Physical Coding Sublayer (PCS) and into the gearbox. However, the 10GBASE-R specification defines its data format in terms of 66-bit blocks, each composed of a 2-bit synchronization header followed by 64 bits of payload data.
 
@@ -117,3 +125,82 @@ Input-to-output ratio:
 `33 bits : 32 bits`
 
 This means for every 32-bit word transmitted from the gearbox, there will be 1 bit of extra data left over from the input. Without control logic, this excess would accumulate indefinitely, which is not feasible. However, since this discrepancy adds 1 extra bit per cycle, after 32 cycles, a full 32-bit word accumulates. The solution is to apply backpressure from the gearbox to the Encoder and MAC every 32 cycles. This backpressure halts the transmission of new data momentarily, allowing the gearbox to transmit the extra 32-bit word and maintain synchronization.
+
+## RX Gearbox
+
+The RX gearbox is similar in function to the TX gearbox but includes an additional complication. Like the TX gearbox, it receives data from the transceivers in **32-bit words**, but it must ensure the data is correctly reassembled in **64b/66b block format**.
+
+A 64b/66b block is structured as follows:
+
+| Bit #  | 0  | 1  | 2  | 3  | 4  | ... | 65  |
+|--------|----|----|----|----|----|-----|-----|
+| Field  | H0 | H1 | D0 | D1 | D2 | ... | D63 |
+
+Here, **H0:H1** represents the 2-bit synchronous header, and **D0–D63** represents the 64-bit payload.
+
+Since the RX gearbox receives **32-bit chunks**, a single 66-bit block is split across multiple words:
+
+1. **First 32-bit word:** `[H0:H1, D0:D29]`  
+2. **Second 32-bit word:** `[D30:D61]`  
+3. **Third 32-bit word:** `[D62:D63, H0:H1 (next block), D0:D27]`  
+
+Notice that the third word contains the **remaining 2 bits from the first 66-bit block** as well as the **beginning of the next block**.
+
+The primary goal of the RX gearbox is to **correctly capture the synchronous header and payload**, ensuring data is properly aligned before passing it to the **de-scrambler and decoder**.
+
+### Re-Aligning Data
+
+A key challenge for the RX gearbox is that we cannot assume the first 32-bit word is aligned with the start of a 66-bit block (i.e., `[H0:H1, D0:D29]`). Depending on when the PCS receives data from the PMA, the RX gearbox may start mid-block, resulting in misalignment. If the gearbox begins receiving data in the middle of a 66-bit block, the first 32-bit word may not contain the header (`H0:H1`) and the expected first data bits (`D0:D29`). Without re-alignment, the gearbox would misinterpret data, causing errors in the de-scrambler and decoder. The purpose of re-alignment is to detect the correct position of the 66-bit synchronous header and shift incoming 32-bit words so that the 64b/66b blocks are correctly reconstructed.
+
+Suppose the correct 66-bit block looks like this:
+
+[ H0 H1 | D0 D1 D2 ... D61 D62 D63 ]
+
+But the RX gearbox may begin capturing in the middle of the block, producing 32-bit words that cut across boundaries:
+
+Word 1: D45 D46 D47 ... D63 H0 H1 D0 D1 D2 D3 ...
+Word 2: D12 D13 D14 ... D43 D44
+Word 3: D45 D46 D47 ... (repeats misaligned pattern)
+
+Here, the header bits `H0 H1` are not at the start of a word, but instead appear inside `Word 1`. If we attempted to decode immediately, the deserializer would treat `D45 D46` as the header, which is invalid.
+
+The gearbox must therefore realign so that every 32-bit word is grouped such that:
+
+[ H0 H1 | D0 ... D29 ] [ D30 ... D61 D62 D63 | H0 H1 | D0 ... ]
+
+This ensures that the 66-bit boundaries are respected and blocks are reconstructed properly.
+
+### Re-Aligning Algorithm
+
+#### Conceptual Idea
+
+Conceptually, aligning data in the RX gearbox can be thought of as managing a continuous bit stream.  
+The incoming data is serialized and then captured in 32-bit words, which are fed into the gearbox.  
+
+We can imagine a sliding window of 32 bits moving along this bit stream. Each time the window moves, it captures a 32-bit word and passes it to the gearbox.  
+
+If the data is misaligned (e.g., the synchronous 2-bit header `[H0:H1]` is not at the correct boundary), we can correct this by shifting the sliding window one bit at a time to the left. This process continues until the gearbox finds the valid 66-bit header position, ensuring the data blocks are reconstructed properly.
+
+Continuous Bit Stream:
+... H0 H1 D0 D1 D2 D3 D4 D5 D6 D7 D8 D9 D10 D11 D12 D13 ...
+
+Initial Window (32 bits, misaligned):
+[ D4 D5 D6 D7 D8 D9 D10 D11 D12 D13 D14 ... D35 ]
+
+Shift Left by 1 Bit:
+[ D5 D6 D7 D8 D9 D10 D11 D12 D13 D14 ... D36 ]
+
+Shift Left by 1 Bit:
+[ D6 D7 D8 D9 D10 D11 D12 D13 D14 ... D37 ]
+
+...
+After Enough Shifts → Header Detected:
+[ H0 H1 D0 D1 D2 D3 ... D29 D30 D31 ]
+
+In this example, the window begins in the middle of the block (misaligned) but is repeatedly shifted left until the `H0 H1` header is correctly aligned at the start of the 32-bit word. Once the gearbox detects this alignment, normal block reconstruction can begin.
+
+#### Implementation 
+
+Although the above example is very straight forward, implementing it in logic is not as easy since we only have access to 32-bits at a time. Additionally, with the low-latency optimizations, we do not want to add extra clock cycles and stop the operation of the gearbox just to consume and store more data.
+
+Initially, I attempted to implement a shift by 1 algorithm, however, this led to many bugs and did not seem feasible to operate at 322MHz as the logic gre increasingly complex to deal with edge cases.

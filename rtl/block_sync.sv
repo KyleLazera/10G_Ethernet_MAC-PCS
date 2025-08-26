@@ -107,12 +107,12 @@ module block_sync
 localparam BUF_SIZE = (DATA_WIDTH*2) + HDR_WIDTH;
 localparam CNTR_WIDTH = $clog2(32) + 1;
 
-/* --------------------- Index LUT Logic --------------------- */ 
+// --------------------- Index LUT Logic --------------------- // 
 
 logic [6:0]             index_lut[32:0];
+logic [6:0]             slip_lut[32:0];
 
 initial begin
-    // Initialize first 3 index positions
     index_lut[0] = 7'd0;
     index_lut[1] = 7'd32;
     index_lut[2] = 7'd64;
@@ -145,35 +145,76 @@ initial begin
     index_lut[29] = 7'd4;
     index_lut[30] = 7'd36;
     index_lut[31] = 7'd2;
-    index_lut[32] = 7'd34;
-
+    index_lut[32] = 7'd34; 
 end
 
-/* --------------------- Cycle/Slip Counter Logic --------------------- */ 
+initial begin
+    slip_lut[0]  = 6'd32;
+    slip_lut[1]  = 6'd31;
+    slip_lut[2]  = 6'd31;
+    slip_lut[3]  = 6'd29;
+    slip_lut[4]  = 6'd29;
+    slip_lut[5]  = 6'd27;
+    slip_lut[6]  = 6'd27;
+    slip_lut[7]  = 6'd25;
+    slip_lut[8]  = 6'd25;
+    slip_lut[9]  = 6'd23;
+    slip_lut[10] = 6'd23;
+    slip_lut[11] = 6'd21;
+    slip_lut[12] = 6'd21;
+    slip_lut[13] = 6'd19;
+    slip_lut[14] = 6'd19;
+    slip_lut[15] = 6'd17;
+    slip_lut[16] = 6'd17;
+    slip_lut[17] = 6'd15;
+    slip_lut[18] = 6'd15;
+    slip_lut[19] = 6'd13;
+    slip_lut[20] = 6'd13;
+    slip_lut[21] = 6'd11;
+    slip_lut[22] = 6'd11;
+    slip_lut[23] = 6'd9;
+    slip_lut[24] = 6'd9;
+    slip_lut[25] = 6'd7;
+    slip_lut[26] = 6'd7;
+    slip_lut[27] = 6'd5;
+    slip_lut[28] = 6'd5;
+    slip_lut[29] = 6'd3;
+    slip_lut[30] = 6'd3;
+    slip_lut[31] = 6'd1;
+    slip_lut[32] = 6'd1;
+end
+
+
+// --------------------- Cycle/Slip Counter Logic --------------------- // 
 
 logic [CNTR_WIDTH-1:0]  seq_cntr = '0;
 logic [6:0] slip_cntr = '0;
+logic [6:0] slip_index = '0;
 
 always_ff @(posedge i_clk) begin
     if(!i_reset_n) begin 
         seq_cntr <= '0;
         slip_cntr <= '0;
     end else begin
+
+        slip_index <= slip_lut[slip_cntr];
+
         seq_cntr <= (seq_cntr == 6'd32) ? '0 : seq_cntr + 1;
 
-        if (i_slip)
-            slip_cntr <= slip_cntr + 1;
+        if (i_slip) begin
+            slip_cntr <= (slip_cntr == 7'd65) ? '0 : slip_cntr + 1;
+        end
     end
 end
 
-/* --------------------- Circular Buffer Logic --------------------- */ 
+// --------------------- Circular Buffer Logic --------------------- // 
 
 logic                   even; 
 logic [BUF_SIZE-1:0]    rx_data_buff = '0;
 logic [(BUF_SIZE*2)-1:0]rx_comb_buff;
 logic [6:0]             buffer_ptr;
 
-assign even = !seq_cntr[0];
+assign even = (seq_cntr > slip_lut[slip_cntr]) ? (seq_cntr[0]) : !seq_cntr[0];
 assign buffer_ptr = index_lut[seq_cntr];
 
 generate
@@ -182,12 +223,12 @@ generate
         rx_comb_buff[BUF_SIZE-1:0] = rx_data_buff;
 
         for(int i = 0; i < DATA_WIDTH; i++) begin
-            // Wrap around logic
-            if((i + buffer_ptr >= BUF_SIZE))
-                rx_comb_buff[(buffer_ptr + i) - BUF_SIZE] = i_rx_data[i];
-            // Non-wrap around logic 
-            else
-                rx_comb_buff[buffer_ptr + i] = i_rx_data[i];
+                // Wrap around logic
+                if((i + buffer_ptr >= BUF_SIZE))
+                    rx_comb_buff[(buffer_ptr + i) - BUF_SIZE] = i_rx_data[i];
+                // Non-wrap around logic 
+                else
+                    rx_comb_buff[buffer_ptr + i] = i_rx_data[i];
         end
 
         rx_comb_buff[(BUF_SIZE*2)-1:BUF_SIZE] = rx_comb_buff[BUF_SIZE-1:0];
@@ -195,12 +236,12 @@ generate
     end
 endgenerate
 
-/* Latch the buffer data */
+// Latch the buffer data //
 always_ff @(posedge i_clk) begin
     rx_data_buff <= rx_comb_buff[BUF_SIZE-1:0];
 end
 
-/* --------------------- Parallel Computation Logic --------------------- */ 
+// --------------------- Parallel Computation Logic --------------------- // 
 
 logic [HDR_WIDTH-1:0] hdr_parallel_comp [BUF_SIZE-1:0];
 logic [DATA_WIDTH-1:0] even_data_parallel [BUF_SIZE-1:0];
@@ -218,10 +259,12 @@ generate
 
 endgenerate
 
-/* --------------------- Output Logic --------------------- */
+
+
+// --------------------- Output Logic --------------------- //
 
 assign o_tx_data = (even) ? even_data_parallel[slip_cntr] : odd_data_parallel[slip_cntr];
 assign o_tx_sync_hdr = hdr_parallel_comp[slip_cntr];
-assign o_tx_data_valid = (seq_cntr != '0);
+assign o_tx_data_valid = (slip_cntr) ? (seq_cntr != slip_lut[slip_cntr]) : (seq_cntr != '0);
 
 endmodule
