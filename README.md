@@ -67,7 +67,7 @@ Therefore:
 
 This section provides an overview of each module used within the 10G Ethernet design and goes over the design challenges associated with each.
 
-### TX Encoder
+## TX Encoder
 
 With this in mind, the encoder will receive 32-bit data blocks and 4 bits of control data over the XGMII interface, operating at approximately 322 MHz. However, the encoder must produce 64-bit encoded blocks with a 2-bit header for 64b/66b encoding.
 

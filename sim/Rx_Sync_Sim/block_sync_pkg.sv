@@ -1,10 +1,12 @@
 package block_sync_pkg;
 
     `include "../Common/scoreboard_base.sv"
+    `include "circular_buffer.sv"
 
     /* Parameters */
     parameter DATA_WIDTH = 32;
     parameter HDR_WIDTH = 2;
+    parameter BLOCK_SIZE = 66;
 
     /* Data Queues */
     logic ref_model[$];
@@ -14,8 +16,12 @@ package block_sync_pkg;
     /* Synchronization Events */
     event data_transmitted;
 
-    /* Scoreboard class Init */
+    /* Class Initializations */
     scoreboard_base scb = new();
+    circular_buffer #(
+        .BUFFER_SIZE(BLOCK_SIZE), 
+        .BUFF_DATA_WIDTH(DATA_WIDTH)
+    ) buffer = new();
 
     /* Variables/Structs */
     typedef struct{
@@ -29,7 +35,7 @@ package block_sync_pkg;
     } ref_data_t;
 
     int slip_set;
-    int cycle_cntr = 0;
+    int slip_count = 0;
 
     //---------------------------------------------------------------------
     // This function generates a 66 bit block of data in the format output
@@ -63,53 +69,7 @@ package block_sync_pkg;
             end
         end
 
-    endfunction : generate_66b_block
-
-    function void generate_32b_block();
-
-        logic [DATA_WIDTH-1:0] data_word;
-        logic slip_word;
-
-        int i;
-        int slip_size;
-
-        slip_size = slip_queue.size();
-
-        $display("Slip Size: %0d, last Value: %0b", slip_size, slip_queue[0]);
-
-        // Randomize a 32 bit word
-        data_word = $urandom; 
-
-        // Make sure we do not set the slip value in 2 conditions:
-        // 1) There was a slip on the previous input
-        // 2) It is the first cycle of the simulation
-        if (slip_size != 0)
-            slip_word = set_slip(slip_queue[0]);
-        else
-            slip_word = 1'b0;
-
-        // Randomize data words and push into data stream queue
-        for(i = 0; i < 32; i++) begin
-            data_stream.push_front(data_word[i]);
-            ref_model.push_front(data_word[i]);
-        end
-
-        //Push slip inot data stream
-        slip_queue.push_front(slip_word);
-
-    endfunction : generate_32b_block    
-
-    //---------------------------------------------------------------------
-    // This function utilizes the generate_32b_block to create a serial bit
-    // stream with a variable number of 32 bit words & populates the 
-    // data_stream, ref_model & slip queues with this data.
-    //---------------------------------------------------------------------    
-    function void generate_serial_bit_stream(int num_words);
-
-        repeat(num_words)
-            generate_32b_block();
-
-    endfunction : generate_serial_bit_stream
+    endfunction : generate_66b_block  
 
     //---------------------------------------------------------------------
     // Helper function that is used to randomize the probability of setting
@@ -141,7 +101,7 @@ package block_sync_pkg;
     // It encapsulates the data within a struct and returns the struct for 
     // further validation.
     //---------------------------------------------------------------------      
-    function encoded_data_t get_ref_data();
+    function encoded_data_t get_ref_data(bit slip);
 
         logic [65:0] rx_expected_block;
         encoded_data_t ref_data;
@@ -172,23 +132,37 @@ package block_sync_pkg;
     //---------------------------------------------------------------------        
     function void slip_data(int data_index, ref encoded_data_t ref_data);
 
-        $display("Shifting Word, index %0d", data_index);
-        $display("Full data BEFORE shifting: %066b", {ref_data.data_word[1], ref_data.data_word[0], ref_data.sync_hdr});
+        /*$display("Slip requested at index %0d", data_index);
 
+        // Increment slip count
+        slip_count++;
+
+        // On slip: overwrite the current word with the new one
         if (data_index == 0) begin
-            ref_data.sync_hdr = {ref_data.data_word[0][0], ref_data.sync_hdr[1]};
-            ref_data.data_word[0] = {ref_data.data_word[1][0], ref_data.data_word[0][DATA_WIDTH-1:1]};
-            ref_data.data_word[1] = {ref_model.pop_back(), ref_data.data_word[1][DATA_WIDTH-1:1]};                        
+            ref_data.data_word[0] = ref_data.data_word[1];
+            ref_data.data_word[1] = ref_model.pop_back();
         end else begin
-            ref_data.data_word[1] = {ref_model.pop_back(), ref_data.data_word[1][DATA_WIDTH-1:1]};
+            ref_data.data_word[1] = ref_model.pop_back();
         end
 
-        $display("Full data AFTER shifting: %066b", {ref_data.data_word[1], ref_data.data_word[0], ref_data.sync_hdr});
+        // Adjust header interpretation depending on slip parity
+        if (!(slip_count % 2 == 0)) begin
+            // Even slips → normal interpretation (bits [0:1])
+            ref_data.sync_hdr = {ref_data.data_word[0][1], ref_data.data_word[0][0]};
+        end else begin
+            // Odd slips → shifted interpretation (bits [1:2])
+            ref_data.sync_hdr = {ref_data.data_word[0][2], ref_data.data_word[0][1]};
+        end
 
-        $display("Shifted Word:");
-        $display("Sync Header: %0h", ref_data.sync_hdr);
-        $display("Data word 0: %0h", ref_data.data_word[0]);
-        $display("Data Word 1: %0h", ref_data.data_word[1]);
+        $display("Slip Count = %0d (parity = %s)", 
+                  slip_count, (slip_count % 2) ? "ODD" : "EVEN");
+        $display("Adjusted sync header = %0b", ref_data.sync_hdr);*/
+
+        if (data_index == 0)
+            ref_model.pop_back();
+        else
+            for(int i = 32; i < 64; i++)
+                ref_model.delete(i);
 
     endfunction : slip_data
 
@@ -210,18 +184,17 @@ package block_sync_pkg;
     // Simple validation function used to validate data words and send the validation
     // results to the scoreboard for logging.
     //---------------------------------------------------------------------    
-    function void validate_data(logic [DATA_WIDTH-1:0] expected_data [1:0], logic [DATA_WIDTH-1:0] actual_data [1:0]);
-        foreach(actual_data[i])
-            assert(expected_data[i] == actual_data[i]) begin
-                $display("MATCH: Expected Data[%0d]: %0h == Actual Data[%0d]: %0h", i, expected_data[i], i, actual_data[i]);
-                scb.record_success();                
-            end else begin
-                $display("MISMATCH: Expected Data[%0d]: %0h != Actual Data[%0d]: %0h", i, expected_data[i], i, actual_data[i]);   
-                scb.record_failure();   
-            end
+    function void validate_data(logic [DATA_WIDTH-1:0] expected_data, logic [DATA_WIDTH-1:0] actual_data);
+        assert(expected_data == actual_data) begin
+            $display("MATCH: Expected Data: %0h == Actual Data: %0h", expected_data, actual_data);
+            scb.record_success();                
+        end else begin
+            $display("MISMATCH: Expected Data: %0h != Actual Data: %0h", expected_data, actual_data);   
+            scb.record_failure();   
+        end
 
-            if (scb.num_failures != 0)
-                $finish;
+        if (scb.num_failures != 0)
+            $finish;
     endfunction : validate_data
 
 
