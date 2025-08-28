@@ -68,8 +68,7 @@ module block_sync_top;
 
             // Write data into the reference circular buffer
             buffer.write(data_vector, slip);
-            buffer.peek();
-        
+            
             // Transmit the data 
             // The i_slip input is set to 1'b1 with a 10% probability
             // to make this more realistic to the actual design.        
