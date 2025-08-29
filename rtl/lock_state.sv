@@ -44,8 +44,16 @@ always_ff @(posedge i_clk) begin
         if (i_hdr_valid) begin
             sh_counter <= sh_counter + 1;
             
-            if(!sh_valid) 
+            if(!sh_valid) begin
                 sh_invalid_cntr <= sh_invalid_cntr + 1;
+                
+                if (sh_invalid_cntr == MAX_SH_INVALID | (!block_lock)) begin
+                    sh_counter <= '0;
+                    sh_invalid_cntr <= '0;
+                    slip <= 1'b1;
+                    block_lock <= 1'b0;
+                end
+            end
         end
 
         if (sh_counter == MAX_SH_CNTR) begin
@@ -56,11 +64,6 @@ always_ff @(posedge i_clk) begin
             if (sh_invalid_cntr == 0) begin
                 block_lock <= 1'b1;
             end
-        end
-
-        if (sh_invalid_cntr == MAX_SH_INVALID | (!block_lock)) begin
-            slip <= 1'b1;
-            block_lock <= 1'b0;
         end
 
     end

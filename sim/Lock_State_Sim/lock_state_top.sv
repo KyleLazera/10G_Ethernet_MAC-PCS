@@ -31,10 +31,9 @@ module lock_state_top;
         clk = 1'b0;
     end 
 
-    //TODO: add more variablitity in the i_hdr_valid value
     task drive_data(input logic [HDR_WIDTH-1:0] header);        
         i_hdr <= header;
-        i_hdr_valid <= 1'b1;
+        i_hdr_valid <= ~i_hdr_valid;
     endtask : drive_data
 
     task read_data(output logic slip, output logic block_lock);
@@ -48,17 +47,23 @@ module lock_state_top;
         logic ref_slip, ref_block_lock;
 
         repeat(iterations) begin
-            header = generate_header();
-            drive_data(header);
-            @(posedge clk);
-
             fork
-                read_data(slip, block_lock);
-                golden_model(clk, i_hdr_valid, i_hdr, ref_slip, ref_block_lock);
+                begin
+                    header = generate_header();
+                    drive_data(header);
+                    @(posedge clk);
+                    read_data(slip, block_lock);
+                    ->data_sampled;
+                end
+                begin
+                    golden_model(clk, i_hdr_valid, i_hdr, ref_slip, ref_block_lock);
+                end
+                begin
+                    @(golden_model_done);
+                    validate_slip(slip, ref_slip);
+                    validate_block_lock(block_lock, ref_block_lock);
+                end
             join_any
-
-            validate_slip(ref_slip, slip);
-            validate_block_lock(ref_block_lock, block_lock);
         end
 
     endtask : validate_lock_state
@@ -73,8 +78,9 @@ module lock_state_top;
         @(posedge clk);
         reset_n <= 1'b1; 
 
-        validate_lock_state(10);
+        validate_lock_state(50);
 
+        scb.print_summary();
         #100;
         $finish;
 
