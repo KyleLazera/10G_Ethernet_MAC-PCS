@@ -14,6 +14,7 @@ module block_sync_top;
     // Sync to Descrambler
     logic [DUT_DATA_WIDTH-1:0] o_data;
     logic [HDR_WIDTH-1:0] o_data_hdr;
+    logic o_hdr_valid;
     logic o_data_valid;
     // Transciever to sync
     logic i_slip;
@@ -30,6 +31,7 @@ module block_sync_top;
         .i_reset_n(reset_n),
         .o_tx_data(o_data),
         .o_tx_sync_hdr(o_data_hdr),
+        .o_tx_sync_hdr_valid(o_hdr_valid),
         .o_tx_data_valid(o_data_valid),
         .i_slip(i_slip),
         .i_rx_data(i_data)  
@@ -68,7 +70,7 @@ module block_sync_top;
 
             // Write data into the reference circular buffer
             buffer.write(data_vector, slip);
-            
+
             // Transmit the data 
             // The i_slip input is set to 1'b1 with a 10% probability
             // to make this more realistic to the actual design.        
@@ -86,15 +88,14 @@ module block_sync_top;
                     ref_data_word[0] = buffer.read(((slip_cntr % 2 == 0) ? 2 : 3), DATA_WIDTH);                
                 end 
 
-                // Sample the sync header only if it is the first transmitted cycle
-                if (even) begin                    
-                    o_data_word[1] = o_data;
-                    validate_data(ref_data_word[1], o_data_word[1]);  
-                end else begin
+                // Sample Data & Validate
+                o_data_word[even] = o_data;
+                validate_data(ref_data_word[even], o_data_word[even]);
+
+                // Sample Header id hdr valid is high
+                if (o_hdr_valid) begin
                     o_hdr = o_data_hdr;
-                    o_data_word[0] = o_data;
                     validate_hdr(ref_hdr, o_hdr);
-                    validate_data(ref_data_word[0], o_data_word[0]);                    
                 end
 
             end

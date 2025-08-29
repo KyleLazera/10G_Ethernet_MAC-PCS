@@ -97,6 +97,7 @@ module block_sync
     // Gearbox-to-Scrambler Interface
     output logic [DATA_WIDTH-1:0]   o_tx_data,
     output logic [HDR_WIDTH-1:0]    o_tx_sync_hdr,
+    output logic                    o_tx_sync_hdr_valid,
     output logic                    o_tx_data_valid,
     input logic                     i_slip,
 
@@ -180,7 +181,7 @@ assign buffer_ptr = index_lut[seq_cntr];
 generate
     always_comb begin
 
-        rx_comb_buff[BUF_SIZE-1:0] = rx_data_buff;
+        rx_comb_buff= rx_data_buff;
 
         for(int i = 0; i < DATA_WIDTH; i++) begin
                 // Wrap around logic
@@ -203,6 +204,7 @@ end
 assign o_tx_data = (slip_reg) ? ((even) ? {rx_comb_buff[0], rx_comb_buff[65:35]} : rx_comb_buff[34:3]) :
                                     ((even) ? rx_comb_buff[65:34] : rx_comb_buff[33:2]);
 assign o_tx_sync_hdr = (slip_reg) ? rx_comb_buff[2:1] : rx_comb_buff[1:0];
+assign o_tx_sync_hdr_valid = !even & o_tx_data_valid;
 assign o_tx_data_valid = (slip_reg) ? (seq_cntr != 6'd32) : (seq_cntr != '0);
 
 endmodule
