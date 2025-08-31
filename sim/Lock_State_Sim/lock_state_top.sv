@@ -31,40 +31,45 @@ module lock_state_top;
         clk = 1'b0;
     end 
 
-    task drive_data(input logic [HDR_WIDTH-1:0] header);        
+    task drive_data(ref lock_state_transaction_t data);        
+        logic [HDR_WIDTH-1:0] header;
+        header = generate_header();
+        
         i_hdr <= header;
         i_hdr_valid <= ~i_hdr_valid;
+
+        data.header = header;
+        data.header_valid = ~i_hdr_valid;
     endtask : drive_data
 
-    task read_data(output logic slip, output logic block_lock);
-        slip = o_slip;
-        block_lock = o_block_lock;       
+    task read_data(ref lock_state_transaction_t data);
+        data.slip = o_slip;
+        data.block_lock = o_block_lock;      
     endtask : read_data
 
     task validate_lock_state(int iterations);
-        logic [HDR_WIDTH-1:0] header;
-        logic slip, block_lock;
-        logic ref_slip, ref_block_lock;
+        lock_state_transaction_t lock_struct; 
 
-        repeat(iterations) begin
-            fork
-                begin
-                    header = generate_header();
-                    drive_data(header);
+        fork
+            begin
+                repeat(iterations) begin
+                    drive_data(lock_struct);
                     @(posedge clk);
-                    read_data(slip, block_lock);
-                    ->data_sampled;
+                    ->data_tx;
+                    @(data_rx);
                 end
-                begin
-                    golden_model(clk, i_hdr_valid, i_hdr, ref_slip, ref_block_lock);
+            end
+            begin
+                repeat(iterations) begin
+                    @(data_tx);
+                    read_data(lock_struct);
+                    sync_queue.push_front(lock_struct);
+                    ->data_rx;
                 end
-                begin
-                    @(golden_model_done);
-                    validate_slip(slip, ref_slip);
-                    validate_block_lock(block_lock, ref_block_lock);
-                end
-            join_any
-        end
+            end
+        join
+    
+        golden_model(clk);
 
     endtask : validate_lock_state
 
@@ -78,7 +83,7 @@ module lock_state_top;
         @(posedge clk);
         reset_n <= 1'b1; 
 
-        validate_lock_state(50);
+        validate_lock_state(100);
 
         scb.print_summary();
         #100;

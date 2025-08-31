@@ -5,10 +5,18 @@ package lock_state_pkg;
 
     localparam HDR_WIDTH = 2;
 
+    typedef struct{
+        logic [HDR_WIDTH-1:0] header;
+        logic header_valid;
+        logic slip;
+        logic block_lock;
+    } lock_state_transaction_t;
+
+    lock_state_transaction_t sync_queue[$];
+
     scoreboard_base scb = new();
 
-    event data_sampled;
-    event golden_model_done;
+    event data_tx, data_rx;
 
     //----------------------------------------------------------
     // This function generates a random 2-bit header value to be
@@ -35,30 +43,27 @@ package lock_state_pkg;
     // machine. It is used to compare the output of the DUT
     // to ensure correct functionality.
     //----------------------------------------------------------
-    task golden_model(
-        input logic i_clk,
-        input logic i_hdr_valid, 
-        input logic [HDR_WIDTH-1:0] i_hdr,
-        ref logic o_slip, 
-        ref logic o_block_lock);
+    task golden_model(input logic i_clk);
 
         typedef enum logic {
             RESET_CNT,
             TEST_SH
         } lock_state_t;
 
+        lock_state_transaction_t actual_data;
         lock_state_t state;
         logic [5:0] sh_counter = '0;
         logic [3:0] sh_invalid_cntr = '0;
-        logic o_block_lock;
         logic sh_valid;
+        logic o_slip, pipe_slip;
+        logic o_block_lock, pipe_block_lock;
 
         //  Initialize state
         state = RESET_CNT;
 
-        while(1) begin
-
-            @(data_sampled);
+        while(sync_queue.size() != 0) begin  
+            actual_data = sync_queue.pop_back();
+            $display("DUT Header: %0d, valid: %0b, slip: %0b, block_lock: %0b", actual_data.header, actual_data.header_valid, actual_data.slip, actual_data.block_lock);                  
 
             case(state)
                 RESET_CNT: begin
@@ -69,11 +74,11 @@ package lock_state_pkg;
                     state = TEST_SH;
                 end
                 TEST_SH: begin
-                    if (i_hdr_valid) begin
+                    if (actual_data.header_valid) begin
                         sh_counter = sh_counter + 1;
                         // ------- Invalid Header State ------- //
-                        if(!(^i_hdr)) begin        
-
+                        if(!(^actual_data.header)) begin        
+                            $display("Header %0d is invalid", actual_data.header);
                             if (sh_counter == 64 && sh_invalid_cntr < 16 && o_block_lock) begin
                                 state = RESET_CNT;
                             end else if (sh_invalid_cntr == 16 || !o_block_lock) begin
@@ -100,13 +105,17 @@ package lock_state_pkg;
                 end
             endcase     
 
-            $display("ref_slip: %0b, ref_block_lock: %0b", o_slip, o_block_lock);
-            ->golden_model_done;
-            @(posedge i_clk);       
+            $display("ref_slip: %0b, ref_block_lock: %0b", o_slip, o_block_lock); 
+
+            if (pipe_slip !== 1'bx || pipe_block_lock !== 1'bx) begin
+                validate_slip(actual_data.slip, pipe_slip);
+                validate_block_lock(actual_data.block_lock, pipe_block_lock);    
+            end
+
+            pipe_slip = o_slip;
+            pipe_block_lock = o_block_lock;       
 
         end
-
-
     endtask : golden_model
 
     function void validate_slip(input logic slip, input logic ref_slip);
@@ -116,6 +125,7 @@ package lock_state_pkg;
         end else begin
             $display("MISMATCH: DUT slip = %0b, ref slip = %0b", slip, ref_slip);
             scb.record_failure();
+            $finish;
         end
     endfunction : validate_slip
 
@@ -126,6 +136,7 @@ package lock_state_pkg;
         end else begin
            $display("MISMATCH: DUT block lock = %0b, ref block lock = %0b", block_lock, ref_block_lock);
            scb.record_failure(); 
+           $finish;
         end
     endfunction : validate_block_lock
 
