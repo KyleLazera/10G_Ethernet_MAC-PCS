@@ -1,6 +1,6 @@
 
 module lock_state #(
-    parameter HDR_WIDTH
+    parameter HDR_WIDTH = 2
 ) (
     input logic                 i_clk,
     input logic                 i_reset_n,

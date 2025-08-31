@@ -8,7 +8,8 @@
  */
 
 module scrambler #(
-    parameter DATA_WIDTH = 32
+    parameter DATA_WIDTH = 32,
+    parameter DESCRAMBLE = 0  // Set to 1 for descrambling operation (RX data path)
 )(
     input logic i_clk,
     input logic i_reset_n,
@@ -64,16 +65,31 @@ integer i;
 //   1) Shifted into the LFSR to update its state, and
 //   2) Bitwise XORed with each input data bit to produce scrambled output.
 // --------------------------------------------------------------------
-always_comb begin
+generate
+    if (DESCRAMBLE) begin : desrambler_block 
+        always_comb begin
 
-    poly = lfsr;
+            poly = lfsr;
 
-    for(i = 0; i < DATA_WIDTH; i++) begin
-        o_data_comb[i] = i_rx_data[i] ^ poly[38] ^ poly[57];
-        poly = {poly[56:0], o_data_comb[i]};
+            for(i = 0; i < DATA_WIDTH; i++) begin
+                poly = {poly[56:0], i_rx_data[i]};
+                o_data_comb[i] = i_rx_data[i] ^ poly[38] ^ poly[57];
+            end
+
+        end    
+    end else begin : scrambler_block
+        always_comb begin
+
+            poly = lfsr;
+
+            for(i = 0; i < DATA_WIDTH; i++) begin
+                o_data_comb[i] = i_rx_data[i] ^ poly[38] ^ poly[57];
+                poly = {poly[56:0], o_data_comb[i]};
+            end
+
+        end
     end
-
-end
+endgenerate
 
 assign o_tx_data = o_data_reg;
 assign o_tx_data_valid = data_valid;

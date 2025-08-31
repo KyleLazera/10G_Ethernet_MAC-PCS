@@ -1,7 +1,7 @@
 `include "../Common/scoreboard_base.sv"
 
 
-module scrambler_top;
+module descrambler_top;
 
     /* Parameters */
     localparam DATA_WIDTH = 32;
@@ -27,7 +27,7 @@ module scrambler_top;
     /* DUT Instantiation */
     scrambler #(
         .DATA_WIDTH(DATA_WIDTH),
-        .DESCRAMBLE(0)
+        .DESCRAMBLE(1) // Set to descramble
     ) DUT (
         .i_clk(clk),
         .i_reset_n(i_reset_n),
@@ -61,11 +61,10 @@ module scrambler_top;
         int i;
 
         for (i = 0; i < 32; i++) begin
+            // Shift LFSR and insert new feedback bit
+            lfsr = {lfsr[56:0], data_in[i]};            
             // Scramble input bit using MSB of LFSR
             data_out[i] = data_in[i] ^ lfsr[57] ^ lfsr[38];
-
-            // Shift LFSR and insert new feedback bit
-            lfsr = {lfsr[56:0], data_out[i]};
         end
 
         return data_out;
@@ -158,4 +157,4 @@ module scrambler_top;
     end
 
 
-endmodule : scrambler_top
+endmodule : descrambler_top
