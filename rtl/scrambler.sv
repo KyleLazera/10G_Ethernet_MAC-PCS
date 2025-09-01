@@ -66,6 +66,7 @@ integer i;
 //   2) Bitwise XORed with each input data bit to produce scrambled output.
 // --------------------------------------------------------------------
 generate
+    // Descrambling uses the inverse of teh scrambling logic 
     if (DESCRAMBLE) begin : desrambler_block 
         always_comb begin
 
