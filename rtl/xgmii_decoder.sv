@@ -1,7 +1,8 @@
 
 module xgmii_decoder #(
     parameter DATA_WIDTH = 32,
-    parameter HDR_WIDTH = 2
+    parameter HDR_WIDTH = 2,
+    parameter CTRL_WIDTH = 4
 )(
     input logic i_clk,
     input logic i_reset_n,
@@ -131,18 +132,18 @@ always_comb begin
                         i_rx_data;
 
     decoded_ctrl[0] =   (idle_frame_reg) ? 4'b1111 :
-                        (start_0_frame) ? 4'b0001 :
-                        (stop_0_frame) ? 4'b1111 :
-                        (stop_1_frame) ? 4'b1110 :
-                        (stop_2_frame) ? 4'b1100 :
-                        (stop_3_frame) ? 4'b1000 :
+                        (start_0_frame_reg) ? 4'b0001 :
+                        (stop_0_frame_reg) ? 4'b1111 :
+                        (stop_1_frame_reg) ? 4'b1110 :
+                        (stop_2_frame_reg) ? 4'b1100 :
+                        (stop_3_frame_reg) ? 4'b1000 :
                         4'b0000;
 
-    decoded_ctrl[1] =  (start_4_frame) ? 4'b0001 :
-                       (stop_4_frame) ? 4'b1111 :
-                       (stop_5_frame) ? 4'b1110 :
-                       (stop_6_frame) ? 4'b1100 :
-                       (stop_7_frame) ? 4'b1000 :
+    decoded_ctrl[1] =  (start_4_frame_reg) ? 4'b0001 :
+                       (stop_4_frame_reg) ? 4'b1111 :
+                       (stop_5_frame_reg) ? 4'b1110 :
+                       (stop_6_frame_reg) ? 4'b1100 :
+                       (stop_7_frame_reg) ? 4'b1000 :
                        4'b0000;
 end
 

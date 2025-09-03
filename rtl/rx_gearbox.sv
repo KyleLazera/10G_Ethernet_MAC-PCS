@@ -37,7 +37,7 @@ block_sync #(
 
     // Gearbox Data Input
     .i_rx_data(i_rx_data)
-)
+);
 
 // --------------- Lock State Instantation --------------- //
 lock_state #(

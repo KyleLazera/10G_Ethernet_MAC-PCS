@@ -15,9 +15,37 @@ package pcs_pkg;
 
     /* Queue Declarations */
     logic pcs_ref_model[$];
+    logic pcs_rx_data_stream[$];
 
     /* Class Declarations */
     pcs_scb scb = new();
+
+    /* Randomly generates a 66-bit block of code & stores it in a queue */
+    function void generate_66b_block();
+        logic [ENCODED_BLOCK_WIDTH-3:0] block_66b;
+        logic [1:0] sync_header;
+
+        int i;
+
+        //Randomize the sync header
+        sync_header = $urandom_range(1,2);
+
+        // Place header in queue
+        for(i = 0; i < 2; i++)
+            pcs_rx_data_stream.push_front(sync_header[i]);
+
+        // Randomize data block
+        block_66b = $urandom();
+
+        // Place data in queue
+        for(i = 0; i < ENCODED_BLOCK_WIDTH-2; i++)
+            pcs_rx_data_stream.push_front(block_66b[i]);
+
+    endfunction : generate_66b_block
+
+    function block_sync_golden_model();
+
+    endfunction : block_sync_golden_model
 
     /*
      * Takes in an XGMII frame which is comprised of a 64-bit word along

@@ -8,6 +8,8 @@ interface pcs_if
     localparam DATA_WIDTH = 32;
     localparam CTRL_WIDTH = 4;
 
+    /* -------------------- TX Data Path -------------------- */
+
     /* MAC to PCS Interface */
     logic [DATA_WIDTH-1:0] i_xgmii_txd;
     logic [CTRL_WIDTH-1:0] i_xgmii_txc;
@@ -16,6 +18,16 @@ interface pcs_if
 
     /* PCS Output to GTY Transciever*/
     logic [DATA_WIDTH-1:0] pcs_tx_gearbox_data;
+
+    /* -------------------- RX Data Path -------------------- */
+
+    /* MAC to PCS Interface */
+    logic [DATA_WIDTH-1:0] o_xgmii_rxd;
+    logic [CTRL_WIDTH-1:0] o_xgmii_rxc;
+    logic o_xgmii_rvalid;
+
+    /* PCS Input from GTY Transciever*/
+    logic [DATA_WIDTH-1:0] pcs_rx_gearbox_data;
 
 
     /* Task used to drive Data to the PCS via XGMII Interface */
@@ -42,10 +54,17 @@ interface pcs_if
 
     endtask
 
+    /* Sample data from the GTY Transciever interface */
     task sample_gty_tx_data(output logic [DATA_WIDTH-1:0] gty_tx_data);
         gty_tx_data = pcs_tx_gearbox_data;
         @(posedge i_clk);
     endtask : sample_gty_tx_data
+
+    /* Task used to drive Data from the PCS via GTY RX Interface */
+    task drive_gty_rx_data(logic [DATA_WIDTH-1:0] gty_rx_data);
+        pcs_rx_gearbox_data = gty_rx_data;
+        @(posedge i_clk);
+    endtask : drive_gty_rx_data
 
 
 endinterface : pcs_if

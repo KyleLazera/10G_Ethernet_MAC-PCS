@@ -201,6 +201,18 @@ In this example, the window begins in the middle of the block (misaligned) but i
 
 #### Implementation 
 
-Although the above example is very straight forward, implementing it in logic is not as easy since we only have access to 32-bits at a time. Additionally, with the low-latency optimizations, we do not want to add extra clock cycles and stop the operation of the gearbox just to consume and store more data.
+While the conceptual example above is straightforward, implementing the logic is more challenging because the datapath only provides 32 bits at a time. To avoid introducing unnecessary latency, we cannot pause the gearbox simply to buffer additional data.
 
-Initially, I attempted to implement a shift by 1 algorithm, however, this led to many bugs and did not seem feasible to operate at 322MHz as the logic gre increasingly complex to deal with edge cases.
+My first approach was to implement a bit-by-bit slip algorithm, shifting the 66-bit buffer by one position whenever required. However, this quickly led to bugs and excessive complexity, especially when running at 322 MHz. The design had to account for numerous edge cases, such as ensuring that data validity aligned with the number of slips received.
+
+For example, using the index lookup table (LUT) to place data, we see that on cycle 32 and cycle 33, incoming data is inserted at indices 2 and 34, respectively. If the system slips by three positions, the sync header should now be checked at positions [4:3] of the 66-bit buffer. However, on cycle 32, incoming data would be written into positions [33:2], while the decoder attempts to read positions [34:3]. This creates a subtle but significant issue: bit 34 being sampled comes from two cycles earlier because it was never updated. Although solutions were possible, each fix added more complexity, making the design increasingly fragile.
+
+Instead, I adopted a more efficient approach that leveraged the existing index lookup table, which already controls where incoming data is written. Observing the LUT revealed that the insertion index decreases by two bits per cycle. This insight led to a simplified algorithm:
+
+Treat every two slip signals as equivalent to halting the sequence counter for one cycle.
+
+For an odd number of slips, adjust the sync header sampling by one bit (e.g., check [2:1] instead of [1:0]).
+
+With this scheme, each slip signal instructs the system to temporarily halt the counter and overwrite the previously written word, effectively discarding the misaligned data. This naturally implements a 2-bit slip, so alignment only needs to be corrected on every second slip received.
+
+This method eliminates the need for complex bit-shifting logic while maintaining reliable synchronization at high speed. A software model of this algorithm is available in Software/rx_sync_alo, which demonstrates and validates the approach.

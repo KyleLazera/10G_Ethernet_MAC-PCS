@@ -18,7 +18,7 @@ package pcs_testcases;
     // Store the type of the virtual interface
     typedef virtual pcs_if pcs_vif;
 
-    task automatic test_sanity(pcs_vif pcs);
+    task automatic tx_test_sanity(pcs_vif pcs);
         xgmii_frame_t tx_queue[$];
 
         // Generate a basic set of sanity XGMII frames
@@ -55,8 +55,8 @@ package pcs_testcases;
         scb.print_summary();
     endtask
 
-    // Tets a large number of frames in random order
-    task automatic test_fuzz(pcs_vif pcs);
+    // Tests a large number of frames in random order
+    task automatic tx_test_fuzz(pcs_vif pcs);
         xgmii_frame_t tx_queue[$];
 
         fuzz_test(tx_queue);
@@ -91,7 +91,7 @@ package pcs_testcases;
 
         scb.print_summary();
 
-    endtask : test_fuzz
+    endtask : tx_test_fuzz
 
 endpackage : pcs_testcases
 
