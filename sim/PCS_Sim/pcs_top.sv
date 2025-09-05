@@ -11,7 +11,8 @@ module pcs_top;
 
     /* Signals */
     logic clk;
-    logic reset_n;
+    logic tx_reset_n;
+    logic rx_reset_n;
 
     logic loopback_signal;
 
@@ -21,11 +22,11 @@ module pcs_top;
     /* DUT */
     pcs #(.DATA_WIDTH(DUT_DATA_WIDTH)) DUT (
         .gty_tx_usr_clk(clk),      
-        .gty_tx_usr_reset(reset_n),   
+        .gty_tx_usr_reset(tx_reset_n),   
 
         // For Verif purposes - rx and tx use same clock domain
         .gty_rx_usr_clk(clk),
-        .gty_rx_usr_reset(reset_n),    
+        .gty_rx_usr_reset(rx_reset_n),    
 
         // MAC to PCS (XGMII) Interface
         .i_xgmii_txd(pcs.i_xgmii_txd),         
@@ -56,15 +57,33 @@ module pcs_top;
     /* Stimulus/Test */
     initial begin
 
-        // Initial Reset for design
-        reset_n = 1'b0; #10;
-        @(posedge clk)
-        reset_n = 1'b1;
+        // Assert both resets initially
+        tx_reset_n = 1'b0;
+        rx_reset_n = 1'b0;
 
-        tx_test_sanity(pcs);
+        // Hold TX reset for 10 ns
+        #10;
+        @(posedge clk);
+        tx_reset_n = 1'b1;
+
+        // Start TX sanity test right away
+        fork
+            begin
+                tx_test_sanity(pcs);
+            end
+            begin
+                // Hold RX reset for 3 more clock cycles after TX reset deassertion
+                repeat (3) @(posedge clk);
+                rx_reset_n <= 1'b1;
+                @(posedge clk);
+            end
+        join
+
+        //tx_test_sanity(pcs);
         //tx_test_fuzz(pcs);
 
         #100;
+        disable fork;
         $finish;
 
     end

@@ -69,18 +69,18 @@ logic stop_7_frame_comb;
 
 // Comibationally decode the incoming frame type
 always_comb begin
-    data_frame_comb = (i_rx_hdr == 2'b01) & i_rx_hdr_valid;
-    idle_frame_comb = (i_rx_hdr == 2'b10) & i_rx_hdr_valid & (i_rx_data[7:0] == BLOCK_CTRL) & i_rx_data_valid;
-    start_0_frame_comb = (i_rx_hdr == 2'b10) & i_rx_hdr_valid & (i_rx_data[7:0] == BLOCK_START_0) & i_rx_data_valid;
-    start_4_frame_comb = (i_rx_hdr == 2'b10) & i_rx_hdr_valid & (i_rx_data[7:0] == BLOCK_START_4) & i_rx_data_valid;
-    stop_0_frame_comb = (i_rx_hdr == 2'b10) & i_rx_hdr_valid & (i_rx_data[7:0] == BLOCK_TERM_0) & i_rx_data_valid;
-    stop_1_frame_comb = (i_rx_hdr == 2'b10) & i_rx_hdr_valid & (i_rx_data[7:0] == BLOCK_TERM_1) & i_rx_data_valid;
-    stop_2_frame_comb = (i_rx_hdr == 2'b10) & i_rx_hdr_valid & (i_rx_data[7:0] == BLOCK_TERM_2) & i_rx_data_valid;
-    stop_3_frame_comb = (i_rx_hdr == 2'b10) & i_rx_hdr_valid & (i_rx_data[7:0] == BLOCK_TERM_3) & i_rx_data_valid;
-    stop_4_frame_comb = (i_rx_hdr == 2'b10) & i_rx_hdr_valid & (i_rx_data[7:0] == BLOCK_TERM_4) & i_rx_data_valid;
-    stop_5_frame_comb = (i_rx_hdr == 2'b10) & i_rx_hdr_valid & (i_rx_data[7:0] == BLOCK_TERM_5) & i_rx_data_valid;
-    stop_6_frame_comb = (i_rx_hdr == 2'b10) & i_rx_hdr_valid & (i_rx_data[7:0] == BLOCK_TERM_6) & i_rx_data_valid;
-    stop_7_frame_comb = (i_rx_hdr == 2'b10) & i_rx_hdr_valid & (i_rx_data[7:0] == BLOCK_TERM_7) & i_rx_data_valid;
+    data_frame_comb = (i_rx_hdr == 2'b01);
+    idle_frame_comb = (i_rx_hdr == 2'b10) & (i_rx_data[7:0] == BLOCK_CTRL) & i_rx_data_valid;
+    start_0_frame_comb = (i_rx_hdr == 2'b10) & (i_rx_data[7:0] == BLOCK_START_0) & i_rx_data_valid;
+    start_4_frame_comb = (i_rx_hdr == 2'b10) & (i_rx_data[7:0] == BLOCK_START_4) & i_rx_data_valid;
+    stop_0_frame_comb = (i_rx_hdr == 2'b10) & (i_rx_data[7:0] == BLOCK_TERM_0) & i_rx_data_valid;
+    stop_1_frame_comb = (i_rx_hdr == 2'b10) & (i_rx_data[7:0] == BLOCK_TERM_1) & i_rx_data_valid;
+    stop_2_frame_comb = (i_rx_hdr == 2'b10) & (i_rx_data[7:0] == BLOCK_TERM_2) & i_rx_data_valid;
+    stop_3_frame_comb = (i_rx_hdr == 2'b10) & (i_rx_data[7:0] == BLOCK_TERM_3) & i_rx_data_valid;
+    stop_4_frame_comb = (i_rx_hdr == 2'b10) & (i_rx_data[7:0] == BLOCK_TERM_4) & i_rx_data_valid;
+    stop_5_frame_comb = (i_rx_hdr == 2'b10) & (i_rx_data[7:0] == BLOCK_TERM_5) & i_rx_data_valid;
+    stop_6_frame_comb = (i_rx_hdr == 2'b10) & (i_rx_data[7:0] == BLOCK_TERM_6) & i_rx_data_valid;
+    stop_7_frame_comb = (i_rx_hdr == 2'b10) & (i_rx_data[7:0] == BLOCK_TERM_7) & i_rx_data_valid;
 end
 
 logic data_frame_reg = '0;
@@ -97,22 +97,23 @@ logic stop_6_frame_reg = '0;
 logic stop_7_frame_reg = '0;
 
 always_ff @(posedge i_clk) begin
-    data_frame_reg <= data_frame_comb & !even;
-    idle_frame_reg <= idle_frame_comb & !even;
-    start_0_frame_reg <= start_0_frame_comb & !even;
-    start_4_frame_reg <= start_4_frame_comb & !even;
-    stop_0_frame_reg <= stop_0_frame_comb & !even;      
-    stop_1_frame_reg <= stop_1_frame_comb & !even;      
-    stop_2_frame_reg <= stop_2_frame_comb & !even;      
-    stop_3_frame_reg <= stop_3_frame_comb & !even;      
-    stop_4_frame_reg <= stop_4_frame_comb & !even;      
-    stop_5_frame_reg <= stop_5_frame_comb & !even;      
-    stop_6_frame_reg <= stop_6_frame_comb & !even;      
-    stop_7_frame_reg <= stop_7_frame_comb & !even;
+    data_frame_reg <= data_frame_comb;
+    idle_frame_reg <= idle_frame_comb;
+    start_0_frame_reg <= start_0_frame_comb;
+    start_4_frame_reg <= start_4_frame_comb;
+    stop_0_frame_reg <= stop_0_frame_comb;      
+    stop_1_frame_reg <= stop_1_frame_comb;      
+    stop_2_frame_reg <= stop_2_frame_comb;      
+    stop_3_frame_reg <= stop_3_frame_comb;      
+    stop_4_frame_reg <= stop_4_frame_comb;      
+    stop_5_frame_reg <= stop_5_frame_comb;      
+    stop_6_frame_reg <= stop_6_frame_comb;      
+    stop_7_frame_reg <= stop_7_frame_comb;
 end
 
 logic [DATA_WIDTH-1:0]      decoded_word[1:0];
 logic [CTRL_WIDTH-1:0]      decoded_ctrl[1:0];
+logic                       word_select[1:0];
 
 always_comb begin
     
@@ -145,10 +146,14 @@ always_comb begin
                        (stop_6_frame_reg) ? 4'b1100 :
                        (stop_7_frame_reg) ? 4'b1000 :
                        4'b0000;
+
+    word_select[0] = idle_frame_reg | start_0_frame_reg | stop_0_frame_reg | stop_1_frame_reg | stop_2_frame_reg | stop_3_frame_reg;
+
+    word_select[1] = start_4_frame_reg | stop_4_frame_reg | stop_5_frame_reg | stop_6_frame_reg | stop_7_frame_reg;                       
 end
 
-assign o_xgmii_txd = decoded_word[even];
-assign o_xgmii_txc = decoded_ctrl[even];
+assign o_xgmii_txd = (word_select[0]) ? decoded_word[0] : decoded_word[1];
+assign o_xgmii_txc = (word_select[0]) ? decoded_ctrl[0] : decoded_ctrl[1];
 assign o_xgmii_valid = i_rx_data_valid & i_block_lock;
 
 

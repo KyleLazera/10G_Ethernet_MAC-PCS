@@ -18,7 +18,9 @@ module rx_gearbox #(
     input logic [DATA_WIDTH-1:0]    i_rx_data
 );
 // --------------- Signals --------------- //
-logic   lock_state_slip;
+logic                   lock_state_slip;
+logic [HDR_WIDTH-1:0]   sync_hdr_pipe = '0;
+logic                   sync_hdr_valid_pipe = 1'b0;
 
 // --------------- Block Sync Instantiation --------------- //
 block_sync #(
@@ -30,8 +32,8 @@ block_sync #(
 
     // Gearbox-to-Scrambler Interface
     .o_tx_data(o_tx_data),
-    .o_tx_sync_hdr(o_tx_sync_hdr),
-    .o_tx_sync_hdr_valid(o_tx_sync_hdr_valid),
+    .o_tx_sync_hdr(sync_hdr_pipe),
+    .o_tx_sync_hdr_valid(sync_hdr_valid_pipe),
     .o_tx_data_valid(o_tx_data_valid),
     .i_slip(lock_state_slip), 
 
@@ -47,12 +49,18 @@ lock_state #(
     .i_reset_n(i_reset_n),
 
     // Interface with rx block sync
-    .i_hdr(o_tx_sync_hdr),
-    .i_hdr_valid(o_tx_sync_hdr_valid),
+    .i_hdr(sync_hdr_pipe),
+    .i_hdr_valid(sync_hdr_valid_pipe),
     .o_slip(lock_state_slip), 
 
     // Interface with decoder
     .o_block_lock(o_block_lock)
 );
+
+// --------------- Output logic --------------- //
+always_ff @(posedge i_clk) begin
+    o_tx_sync_hdr <= sync_hdr_pipe;
+    o_tx_sync_hdr_valid <= sync_hdr_valid_pipe;
+end
 
 endmodule

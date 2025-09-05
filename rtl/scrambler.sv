@@ -9,7 +9,7 @@
 
 module scrambler #(
     parameter DATA_WIDTH = 32,
-    parameter DESCRAMBLE = 0  // Set to 1 for descrambling operation (RX data path)
+    parameter DESCRAMBLE = 0  // Set to 1 for inverse operation (RX data path)
 )(
     input logic i_clk,
     input logic i_reset_n,
@@ -66,15 +66,15 @@ integer i;
 //   2) Bitwise XORed with each input data bit to produce scrambled output.
 // --------------------------------------------------------------------
 generate
-    // Descrambling uses the inverse of teh scrambling logic 
-    if (DESCRAMBLE) begin : desrambler_block 
+    // Descrambling uses the inverse of the scrambling logic 
+    if (DESCRAMBLE) begin : descrambler_block 
         always_comb begin
 
             poly = lfsr;
 
-            for(i = 0; i < DATA_WIDTH; i++) begin
-                poly = {poly[56:0], i_rx_data[i]};
+            for(i = 0; i < DATA_WIDTH; i++) begin                
                 o_data_comb[i] = i_rx_data[i] ^ poly[38] ^ poly[57];
+                poly = {poly[56:0], i_rx_data[i]};
             end
 
         end    

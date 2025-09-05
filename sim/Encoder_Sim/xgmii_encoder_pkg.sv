@@ -309,11 +309,7 @@ package xgmii_encoder_pkg;
             tx_queue.push_back(generate_word(8'h00));
         
         // Queue termination type
-        tx_queue.push_back(generate_word(term_type));
-
-        // Queue random number of IDLE frames
-        for(i = 0; i < num_idle_words; i++)
-            tx_queue.push_back(generate_word(BLOCK_CTRL));       
+        tx_queue.push_back(generate_word(term_type));     
 
     endfunction : generate_frame
 
@@ -328,6 +324,10 @@ package xgmii_encoder_pkg;
     //  4) Idle frames
     /////////////////////////////////////////////////////////////////////
     function void sanity_test(output xgmii_frame_t tx_queue[$]);
+
+        // Queue random number of IDLE frames
+        for(int i = 0; i < $urandom_range(20, 40); i++)
+            tx_queue.push_back(generate_word(BLOCK_CTRL));  
 
         /* Start Lane 4 and terminate in lane 0 */
         generate_frame(BLOCK_START_4, BLOCK_TERM_0, tx_queue);

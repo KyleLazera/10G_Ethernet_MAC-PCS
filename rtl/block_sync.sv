@@ -196,7 +196,10 @@ endgenerate
 
 // Latch the buffer data //
 always_ff @(posedge i_clk) begin
-    rx_data_buff <= rx_comb_buff[BUF_SIZE-1:0];
+    if (!i_reset_n)
+        rx_data_buff <= '0;
+    else
+        rx_data_buff <= rx_comb_buff[BUF_SIZE-1:0];
 end
 
 // --------------------- Output Logic --------------------- //
