@@ -38,6 +38,7 @@ localparam BLOCK_CTRL = 8'h1E,      // C0 C1 C2 C3 C4 C5 C6 C7
            BLOCK_TERM_7 = 8'hFF;    // D0 D1 D2 D3 D4 D5 D6 77   
 
 logic                       even = '0;
+logic                       rx_data_valid_reg = 1'b0;
 logic [DATA_WIDTH-1:0]      rx_data_reg = '0;
 
 // Pipeline for data
@@ -51,6 +52,7 @@ always_ff @(posedge i_clk) begin
             even <= ~even;
 
         rx_data_reg <= i_rx_data;
+        rx_data_valid_reg <= i_rx_data_valid;
     end
 end
 
@@ -97,42 +99,48 @@ logic stop_6_frame_reg = '0;
 logic stop_7_frame_reg = '0;
 
 always_ff @(posedge i_clk) begin
-    data_frame_reg <= data_frame_comb;
-    idle_frame_reg <= idle_frame_comb;
-    start_0_frame_reg <= start_0_frame_comb;
-    start_4_frame_reg <= start_4_frame_comb;
-    stop_0_frame_reg <= stop_0_frame_comb;      
-    stop_1_frame_reg <= stop_1_frame_comb;      
-    stop_2_frame_reg <= stop_2_frame_comb;      
-    stop_3_frame_reg <= stop_3_frame_comb;      
-    stop_4_frame_reg <= stop_4_frame_comb;      
-    stop_5_frame_reg <= stop_5_frame_comb;      
-    stop_6_frame_reg <= stop_6_frame_comb;      
-    stop_7_frame_reg <= stop_7_frame_comb;
+    if (!even) begin
+        data_frame_reg <= data_frame_comb;
+        idle_frame_reg <= idle_frame_comb;
+        start_0_frame_reg <= start_0_frame_comb;
+        start_4_frame_reg <= start_4_frame_comb;
+        stop_0_frame_reg <= stop_0_frame_comb;      
+        stop_1_frame_reg <= stop_1_frame_comb;      
+        stop_2_frame_reg <= stop_2_frame_comb;      
+        stop_3_frame_reg <= stop_3_frame_comb;      
+        stop_4_frame_reg <= stop_4_frame_comb;      
+        stop_5_frame_reg <= stop_5_frame_comb;      
+        stop_6_frame_reg <= stop_6_frame_comb;      
+        stop_7_frame_reg <= stop_7_frame_comb;
+    end
 end
 
 logic [DATA_WIDTH-1:0]      decoded_word[1:0];
 logic [CTRL_WIDTH-1:0]      decoded_ctrl[1:0];
-logic                       word_select[1:0];
 
 always_comb begin
     
     decoded_word[0] =   (idle_frame_reg) ? 32'h07070707 :
+                        (data_frame_reg) ? rx_data_reg :
                         (start_0_frame_reg) ? {rx_data_reg[31:8], XGMII_START} :
-                        (stop_0_frame_reg) ? {rx_data_reg[31:8], XGMII_TERM} :
-                        (stop_1_frame_reg) ? {rx_data_reg[31:24], XGMII_TERM, rx_data_reg[15:0]} :
-                        (stop_2_frame_reg) ? {rx_data_reg[31:16], XGMII_TERM, rx_data_reg[7:0]} :
-                        (stop_3_frame_reg) ? {rx_data_reg[31:8], XGMII_TERM} :
-                        rx_data_reg;
+                        (start_4_frame_reg) ? 32'h07070707 :
+                        (stop_0_frame_reg) ? {24'h070707, XGMII_TERM} :
+                        (stop_1_frame_reg) ? {16'h0707, XGMII_TERM, rx_data_reg[15:8]} :
+                        (stop_2_frame_reg) ? {8'h07, XGMII_TERM, rx_data_reg[23:8]} :
+                        (stop_3_frame_reg) ? {XGMII_TERM, rx_data_reg[31:8]} :
+                        {i_rx_data[7:0], rx_data_reg[31:8]};
 
-    decoded_word[1] =   (start_4_frame_reg) ? {XGMII_START, i_rx_data[24:0]} :
-                        (stop_4_frame_reg) ? {XGMII_TERM, i_rx_data[23:0]} :
-                        (stop_5_frame_reg) ? {i_rx_data[31:24], XGMII_TERM, i_rx_data[15:0]} :
-                        (stop_6_frame_reg) ? {i_rx_data[31:16], XGMII_TERM, i_rx_data[7:0]} :
-                        (stop_7_frame_reg) ? {i_rx_data[31:8], XGMII_TERM} :
-                        i_rx_data;
+    decoded_word[1] =   (start_4_frame_reg) ? {rx_data_reg[31:8], XGMII_START} :
+                        (start_0_frame_reg) ? rx_data_reg :
+                        (data_frame_reg) ? rx_data_reg :
+                        (stop_4_frame_reg) ? {24'h070707, XGMII_TERM} :
+                        (stop_5_frame_reg) ? {16'h0707, XGMII_TERM, rx_data_reg[15:8]} :
+                        (stop_6_frame_reg) ? {8'h07, XGMII_TERM, rx_data_reg[23:8]} :
+                        (stop_7_frame_reg) ? {XGMII_TERM, rx_data_reg[31:8]} :
+                        32'h07070707;
 
     decoded_ctrl[0] =   (idle_frame_reg) ? 4'b1111 :
+                        (start_4_frame_reg) ? 4'b1111 :
                         (start_0_frame_reg) ? 4'b0001 :
                         (stop_0_frame_reg) ? 4'b1111 :
                         (stop_1_frame_reg) ? 4'b1110 :
@@ -140,21 +148,18 @@ always_comb begin
                         (stop_3_frame_reg) ? 4'b1000 :
                         4'b0000;
 
-    decoded_ctrl[1] =  (start_4_frame_reg) ? 4'b0001 :
-                       (stop_4_frame_reg) ? 4'b1111 :
-                       (stop_5_frame_reg) ? 4'b1110 :
-                       (stop_6_frame_reg) ? 4'b1100 :
-                       (stop_7_frame_reg) ? 4'b1000 :
-                       4'b0000;
-
-    word_select[0] = idle_frame_reg | start_0_frame_reg | stop_0_frame_reg | stop_1_frame_reg | stop_2_frame_reg | stop_3_frame_reg;
-
-    word_select[1] = start_4_frame_reg | stop_4_frame_reg | stop_5_frame_reg | stop_6_frame_reg | stop_7_frame_reg;                       
+    decoded_ctrl[1] =   (data_frame_reg) ? 4'b0000 :
+                        (start_0_frame_reg) ? 4'b0000 :
+                        (start_4_frame_reg) ? 4'b0001 :
+                        (stop_5_frame_reg) ? 4'b1110 :
+                        (stop_6_frame_reg) ? 4'b1100 :
+                        (stop_7_frame_reg) ? 4'b1000 :
+                        4'b1111;                     
 end
 
-assign o_xgmii_txd = (word_select[0]) ? decoded_word[0] : decoded_word[1];
-assign o_xgmii_txc = (word_select[0]) ? decoded_ctrl[0] : decoded_ctrl[1];
-assign o_xgmii_valid = i_rx_data_valid & i_block_lock;
+assign o_xgmii_txd = decoded_word[!even];
+assign o_xgmii_txc = decoded_ctrl[!even];
+assign o_xgmii_valid = rx_data_valid_reg & i_block_lock;
 
 
 endmodule
