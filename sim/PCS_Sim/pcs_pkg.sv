@@ -43,10 +43,6 @@ package pcs_pkg;
 
     endfunction : generate_66b_block
 
-    function block_sync_golden_model();
-
-    endfunction : block_sync_golden_model
-
     /*
      * Takes in an XGMII frame which is comprised of a 64-bit word along
      * with an 8 bit control word. This frame is then split into 32-bit 

@@ -17,7 +17,9 @@ module pcs_top;
     logic loopback_signal;
 
     // XGMI Interafce
-    pcs_if pcs(clk, reset_n);
+    pcs_if pcs(clk, tx_reset_n);
+
+    pcs_scb scoreboard = new();
 
     /* DUT */
     pcs #(.DATA_WIDTH(DUT_DATA_WIDTH)) DUT (
@@ -35,9 +37,9 @@ module pcs_top;
         .o_xgmii_pause(pcs.o_xgmii_pause),   
 
         // MAC to PCS (XGMII) Interface - RX
-        .o_xgmii_rxd(),
-        .o_xgmii_rxc(),
-        .o_xgmii_rvalid(),                   
+        .o_xgmii_rxd(pcs.o_xgmii_rxd),
+        .o_xgmii_rxc(pcs.o_xgmii_rxc),
+        .o_xgmii_rvalid(pcs.o_xgmii_rvalid),                   
 
         // PCS to GTY Transceiver Transmit Interface
         .pcs_tx_gearbox_data(pcs.pcs_tx_gearbox_data),
@@ -52,6 +54,34 @@ module pcs_top;
 
     initial begin
         clk = 1'b0;
+    end
+
+    property p_xgmii_rxd;
+      @(posedge clk)
+        disable iff (!rx_reset_n)
+        pcs.o_xgmii_rvalid |-> (pcs.o_xgmii_rxd == $past(pcs.i_xgmii_txd, 6, clk));
+    endproperty
+
+    property p_xgmii_ctrl;
+      @(posedge clk)
+        disable iff (!rx_reset_n)
+        pcs.o_xgmii_rvalid |-> (pcs.o_xgmii_rxc == $past(pcs.i_xgmii_txc, 6, clk));
+    endproperty
+
+    assert property (p_xgmii_rxd) 
+    begin
+        scoreboard.record_success();
+    end else begin
+        $fatal("MISMATCH of xgmii_txd");
+        scoreboard.record_failure();
+    end
+
+    assert property (p_xgmii_ctrl)
+    begin
+        scoreboard.record_success();
+    end else begin
+        $fatal("MISMATCH of xgmii_ctrl");
+        scoreboard.record_failure();
     end
 
     /* Stimulus/Test */
@@ -69,7 +99,7 @@ module pcs_top;
         // Start TX sanity test right away
         fork
             begin
-                tx_test_sanity(pcs);
+                test_sanity(pcs);
             end
             begin
                 // Hold RX reset for 3 more clock cycles after TX reset deassertion
@@ -79,11 +109,10 @@ module pcs_top;
             end
         join
 
-        //tx_test_sanity(pcs);
-        //tx_test_fuzz(pcs);
 
         #100;
         disable fork;
+        scoreboard.print_summary();
         $finish;
 
     end

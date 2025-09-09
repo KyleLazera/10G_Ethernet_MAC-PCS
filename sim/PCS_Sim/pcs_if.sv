@@ -60,11 +60,14 @@ interface pcs_if
         @(posedge i_clk);
     endtask : sample_gty_tx_data
 
-    /* Task used to drive Data from the PCS via GTY RX Interface */
-    task drive_gty_rx_data(logic [DATA_WIDTH-1:0] gty_rx_data);
-        pcs_rx_gearbox_data = gty_rx_data;
-        @(posedge i_clk);
-    endtask : drive_gty_rx_data
+    /* Task used to sample the output XGMII data from rx-data path */
+    task sample_xgmii_data(output logic [DATA_WIDTH-1:0] xgmii_rxd, output logic [CTRL_WIDTH-1:0] xgmii_ctrl, output logic xgmii_rxd_valid);
+
+        xgmii_rxd = o_xgmii_rxd;
+        xgmii_ctrl = o_xgmii_rxc;
+        xgmii_rxd_valid = o_xgmii_rvalid;
+
+    endtask : sample_xgmii_data
 
 
 endinterface : pcs_if

@@ -55,6 +55,21 @@ package pcs_testcases;
         scb.print_summary();
     endtask
 
+    task automatic test_sanity(pcs_vif pcs);
+        xgmii_frame_t   tx_data_queue[$];
+        logic [31:0]    xgmii_tx_data[$];
+        logic [3:0]     xgmii_tx_ctrl[$];
+
+        // Generate a basic set of sanity XGMII frames
+        sanity_test(tx_data_queue);
+
+        foreach (tx_data_queue[i]) begin
+            pcs.drive_xgmii_data(tx_data_queue[i].data_word, tx_data_queue[i].ctrl_word, data_transmitted);
+            pcs_golden_model(tx_data_queue[i]);
+        end
+
+    endtask
+
     // Tests a large number of frames in random order
     task automatic tx_test_fuzz(pcs_vif pcs);
         xgmii_frame_t tx_queue[$];
