@@ -37,22 +37,6 @@ logic [DATA_WIDTH-1:0] o_data_reg = 'h0;
 logic data_valid = 1'b0;
 logic scrambler_trdy = 1'b1;
 
-/*********** Logic Implementation ***********/
-
-// Init lfsr & latch combinational outputs
-always_ff@(posedge i_clk) begin
-    if(!i_reset_n)
-        lfsr <= {58{1'b1}};
-    else begin
-        scrambler_trdy <= i_rx_trdy;
-        data_valid <= i_rx_data_valid;
-        if(i_rx_data_valid) begin          
-            lfsr <= poly;
-            o_data_reg <= o_data_comb;
-        end
-    end
-end
-
 integer i;
 
 // --------------------------------------------------------------------
@@ -68,17 +52,51 @@ integer i;
 generate
     // Descrambling uses the inverse of the scrambling logic 
     if (DESCRAMBLE) begin : descrambler_block 
+
+        // Init lfsr & latch combinational outputs
+        always_ff@(posedge i_clk) begin
+            if(!i_reset_n) begin
+                lfsr <= {58{1'b1}};
+                o_data_reg <= {DATA_WIDTH{1'b1}};
+            end else begin
+                scrambler_trdy <= i_rx_trdy;
+                data_valid <= i_rx_data_valid;
+                if(i_rx_data_valid) begin          
+                    lfsr <= poly;
+                    o_data_reg <= i_rx_data;
+                end
+            end
+        end
+
         always_comb begin
 
             poly = lfsr;
 
             for(i = 0; i < DATA_WIDTH; i++) begin                
-                o_data_comb[i] = i_rx_data[i] ^ poly[38] ^ poly[57];
-                poly = {poly[56:0], i_rx_data[i]};
+                o_data_comb[i] = o_data_reg[i] ^ poly[38] ^ poly[57];
+                poly = {poly[56:0], o_data_reg[i]};
             end
 
         end    
+
+        assign o_tx_data = o_data_comb;
+
     end else begin : scrambler_block
+        
+        // Init lfsr & latch combinational outputs
+        always_ff@(posedge i_clk) begin
+            if(!i_reset_n)
+                lfsr <= {58{1'b1}};
+            else begin
+                scrambler_trdy <= i_rx_trdy;
+                data_valid <= i_rx_data_valid;
+                if(i_rx_data_valid) begin          
+                    lfsr <= poly;
+                    o_data_reg <= o_data_comb;
+                end
+            end
+        end
+        
         always_comb begin
 
             poly = lfsr;
@@ -89,10 +107,11 @@ generate
             end
 
         end
+
+        assign o_tx_data = o_data_reg;
     end
 endgenerate
 
-assign o_tx_data = o_data_reg;
 assign o_tx_data_valid = data_valid;
 assign o_tx_trdy = scrambler_trdy;
 

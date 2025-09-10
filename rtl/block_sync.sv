@@ -153,18 +153,21 @@ end
 
 logic [CNTR_WIDTH-1:0]  seq_cntr = '0;
 logic                   slip_reg = 1'b0;
+logic [6:0]             ptr = 7'b0;
 
 always_ff @(posedge i_clk) begin
     if(!i_reset_n) begin 
         seq_cntr <= '0;
         slip_reg <= 1'b0;
+        ptr <= 7'b0;
     end else begin
 
         // Keep track of whether we have an odd/even number of slips
         if (i_slip)
             slip_reg <= ~slip_reg;
-        else
+        else begin
             seq_cntr <= (seq_cntr == 6'd32) ? '0 : seq_cntr + 1;
+        end
     end
 end
 

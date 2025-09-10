@@ -30,7 +30,6 @@ module xgmii_encoder
     output logic [DATA_WIDTH-1:0]   o_tx_data,
     output logic [HDR_WIDTH-1:0]    o_tx_sync_hdr,
     output logic                    o_tx_data_valid,
-    output logic                    o_tx_encoding_err,
     input logic                     i_rx_trdy           
 );
 

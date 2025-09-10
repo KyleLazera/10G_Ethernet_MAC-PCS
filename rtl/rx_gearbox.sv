@@ -19,8 +19,8 @@ module rx_gearbox #(
 );
 // --------------- Signals --------------- //
 logic                   lock_state_slip;
-logic [HDR_WIDTH-1:0]   sync_hdr_pipe = '0;
-logic                   sync_hdr_valid_pipe = 1'b0;
+logic [HDR_WIDTH-1:0]   sync_hdr_pipe;
+logic                   sync_hdr_valid_pipe;
 
 // --------------- Block Sync Instantiation --------------- //
 block_sync #(
@@ -58,6 +58,9 @@ lock_state #(
 );
 
 // --------------- Output logic --------------- //
+
+// Pipeline the header and header valid signals to ensure they stay synchronous
+// with the output data which passes through the de-scrambler
 always_ff @(posedge i_clk) begin
     o_tx_sync_hdr <= sync_hdr_pipe;
     o_tx_sync_hdr_valid <= sync_hdr_valid_pipe;

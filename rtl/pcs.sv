@@ -53,7 +53,6 @@ xgmii_encoder #(
     .o_tx_data_valid(encoder_valid),
     .o_tx_data(encoder_data),
     .o_tx_sync_hdr(encoder_hdr),
-    .o_tx_encoding_err(),
     // Back Pressure from GearBox
     .i_rx_trdy(scrambler_trdy)    
 );

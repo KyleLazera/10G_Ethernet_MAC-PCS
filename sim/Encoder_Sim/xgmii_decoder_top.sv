@@ -55,7 +55,6 @@ module xgmii_decoder_top;
         .o_tx_data(xgmii.o_encoded_data),
         .o_tx_sync_hdr(xgmii.o_sync_hdr),
         .o_tx_data_valid(xgmii.o_encoded_data_valid),
-        .o_tx_encoding_err(xgmii.o_encoding_err),
         .i_rx_trdy(xgmii.scrambler_rdy)
     );
 
