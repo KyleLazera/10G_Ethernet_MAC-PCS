@@ -35,8 +35,8 @@ localparam [7:0] ETH_PAD = 8'h00;
 localparam [7:0] XGMII_START = 8'hFB;
 localparam [7:0] XGMII_TERM = 8'hFD;
 
-localparam MIN_FRAME_WIDTH = 59;
-localparam CNTR_WIDTH = $clog2(MIN_FRAME_WIDTH) + 1;
+localparam MIN_PACKETS = 15;
+localparam CNTR_WIDTH = $clog2(MIN_PACKETS) + 1;
 
 /* ---------------- Counter Logic ---------------- */ 
 logic [CNTR_WIDTH-1:0]          data_cntr = '0;
@@ -45,13 +45,14 @@ always_ff @(posedge i_clk) begin
     if (!i_resent_n) begin
         data_cntr <= '0;
     end else if (s_axis_tvalid & s_axis_trdy) begin
-        data_cntr <= (data_cntr == MIN_FRAME_WIDTH) ? '0 : data_cntr + 1;
+        data_cntr <= (data_cntr == MIN_PACKETS) ? '0 : data_cntr + 1;
     end else
         data_cntr <= data_cntr;
 end
 
 /* ---------------- State Machine Logic ---------------- */ 
 logic                               s_axis_trdy_reg = 1'b0;
+logic                               pad_packet = 1'b0;
 logic [(2*XGMII_DATA_WIDTH)-1:0]    data_pipe = '0;
 logic [(2*XGMII_CTRL_WIDTH)-1:0]    ctrl_pipe = '0;
 
@@ -59,6 +60,7 @@ always_ff @(posedge i_clk) begin
     if (!i_resent_n) begin
         data_pipe <= 64'h0707070707070707;
         ctrl_pipe <= 8'hFF;
+        pad_packet <= 1'b0;
     end else begin
 
         if (s_axis_tvalid & !s_axis_trdy) begin
@@ -70,10 +72,15 @@ always_ff @(posedge i_clk) begin
             ctrl_pipe <= {4'h0, ctrl_pipe[(2*XGMII_CTRL_WIDTH)-1 -: 4]};
             s_axis_trdy_reg <= 1'b1;
 
-            if (s_axis_tlast & (data_cntr > MIN_FRAME_WIDTH)) begin
-                //TODO: Append CRC followed by stop bit
-                s_axis_trdy <= 1'b0;
-            end
+            if (s_axis_tlast) begin
+                if ((data_cntr > MIN_PACKETS)) begin
+                    //TODO: Append CRC followed by stop bit
+                    s_axis_trdy_reg <= 1'b0;
+                end else begin
+                    //TODO: Add padding
+                    pad_packet <= 1'b1;
+                end
+            end 
 
         end
 
