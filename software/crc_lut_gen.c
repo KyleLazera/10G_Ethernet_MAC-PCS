@@ -4,44 +4,46 @@
 #define POLY 0x04C11DB7  
 #define TABLE_SIZE  256
 
-/* Generate table 0 */
+/* Generate remainders for LUT0 */
 void generate_table0(uint32_t table[TABLE_SIZE]) {
 
-    for (uint32_t i = 0; i < TABLE_SIZE; i++) {        
-        // Shift up to be inline with MSB of dividend
-        uint32_t crc = i << 24;
-        for (int j = 0; j < 8; j++) {
+    for (uint32_t i_byte = 0; i_byte < TABLE_SIZE; i_byte++) {  
+        uint32_t crc_byte = 0;
 
-            // Check if most sig bits are both 1
-            if (crc & 0x80000000)
-                crc = (crc << 1) ^ POLY;
+        crc_byte = (i_byte << 24) ^ crc_byte;
+
+        // Perform modulo-2 arithmetic for each bit
+        for (uint8_t i = 0; i < 8; i++) {
+            
+            if ((crc_byte & 0x80000000) != 0)
+                crc_byte = (crc_byte << 1) ^ POLY;
             else
-                crc <<= 1;
+                crc_byte <<= 1;
         }
-        table[i] = crc;
+        
+        table[i_byte] = crc_byte;
     }
 }
 
-/* Derive table[j] from table[j-1] */
+// Generate tables 1 through 3
 void generate_tables(uint32_t table0[TABLE_SIZE],
                      uint32_t table1[TABLE_SIZE],
                      uint32_t table2[TABLE_SIZE],
                      uint32_t table3[TABLE_SIZE]) {
-    
     for (int i = 0; i < TABLE_SIZE; i++) {
-        uint32_t c = table0[i];
+        uint32_t c;
 
-        // Advance by one extra byte
-        uint32_t t1 = (c << 8) ^ table0[(c >> 24) & 0xFF];
-        table1[i] = t1;
+        // Advance 1 byte
+        c = table0[i];
+        table1[i] = (c << 8) ^ table0[(c >> 24) & 0xFF];
 
-        // Advance by two extra bytes
-        uint32_t t2 = (t1 << 8) ^ table0[(t1 >> 24) & 0xFF];
-        table2[i] = t2;
+        // Advance 2 bytes
+        c = table1[i];
+        table2[i] = (c << 8) ^ table0[(c >> 24) & 0xFF];
 
-        // Advance by three extra bytes
-        uint32_t t3 = (t2 << 8) ^ table0[(t2 >> 24) & 0xFF];
-        table3[i] = t3;
+        // Advance 3 bytes
+        c = table2[i];
+        table3[i] = (c << 8) ^ table0[(c >> 24) & 0xFF];
     }
 }
 
