@@ -43,79 +43,24 @@ module crc_top;
         clk = 1'b0;
     end
 
-function automatic [31:0] crc32_reference_model(crc_word_t i_word_stream[$]);
-    logic [31:0] crc_state = 32'hFFFFFFFF;
-    logic [7:0]  table_index;
-    logic [7:0]  curr_byte;
-    crc_word_t crc_data;
-    integer i, b;
-
-    repeat(i_word_stream.size()) begin
-
-        crc_data = i_word_stream.pop_back();
-
-        // Process each 32-bit word byte-by-byte, starting with LSB (Byte0 on wire)
-        for (b = 0; b < 4; b++) begin
-            curr_byte = crc_data.data_word[8*b +: 8];
-
-            $display("0x%02h", curr_byte);
-
-            // Standard Sarwate update, LSB-first, LUT contains reflected values
-            table_index = curr_byte ^ crc_state[7:0];
-            crc_state   = (crc_state >> 8) ^ lut[0][table_index];
-        end
-    end
-
-    // Invert at the end (no final reflection since LUT is already reflected)
-    crc32_reference_model = ~crc_state;
-endfunction
-
-
-function automatic logic [31:0] crc32_slicing_by_4_words(crc_word_t word_stream[$]);
-    logic [31:0] crc = 32'hFFFFFFFF;
-    crc_word_t crc_word;
-    logic [7:0] bytes [4], idx;
-
-    repeat(word_stream.size()) begin
-        crc_word = word_stream.pop_back();
-
-        $display("Word: %04h", crc_word.data_word);
-
-        //Isolate Each individual byte
-        for(int i = 0; i < 4; i++) begin
-            bytes[i] = crc_word.data_word[8*i +: 8];
-            idx = (crc[7:0] ^ bytes[i]) & 8'hFF;
-            crc  = (crc >> 8) ^ lut[0][idx]; 
-        end
-    end
-
-    return ~crc; 
-endfunction
-
     task drive_crc32_data();
-        int i;
+        int i, j;
         logic [CRC_WIDTH-1:0] ref_crc, ref_slicing_crc;
         crc_word_t data;
+        crc_word_t word_stream[$];
         
         // Generate a stream of bytes used for teh CRC32 reference model
-        generate_word_stream();
-
-        foreach(word_stream[i]) begin
-            $display("Data Word[%0d] 0x%08h", i, word_stream[i].data_word);     
-            $display("Data Valid: %04b", word_stream[i].data_valid);
-        end   
+        generate_word_stream(4, word_stream);
 
         // Pass the generated data through the reference model
-        ref_crc = crc32_reference_model(word_stream);
+        ref_crc = crc32_sarwate_ref_model(word_stream, lut[0]);
 
-        $display("Ref Model CRC: %0h", ref_crc);
+        ref_slicing_crc = crc32_slicing_by_4(word_stream, lut);
 
-        // Generate 32-bit word values to transmit to the DUT
-        //convert_byte_to_32_bits();
-
-        ref_slicing_crc = crc32_slicing_by_4_words(word_stream);
-
-        $display("Slicing Reference: %0h", ref_slicing_crc);
+        if (ref_crc == ref_slicing_crc)
+            $display("%0h == %0h", ref_crc, ref_slicing_crc);
+        else
+            $display("Ref CRC: %0h != Slicing CRC: %0h", ref_crc, ref_slicing_crc);
 
         repeat(word_stream.size()) begin
             data = word_stream.pop_front();
@@ -154,6 +99,8 @@ endfunction
         #50;
         i_reset_n <= 1'b1;
         @(posedge clk);
+
+        test_slicing_model(lut);
 
         drive_crc32_data();
 
