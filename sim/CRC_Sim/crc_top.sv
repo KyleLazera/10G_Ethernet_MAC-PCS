@@ -15,7 +15,7 @@ module crc_top;
     logic [(DATA_WIDTH/8)-1:0]  data_valid;
     logic [DATA_WIDTH-1:0]      crc_out;  
 
-    logic [CRC_WIDTH-1:0] lut_0 [255:0];
+    logic [CRC_WIDTH-1:0] lut [3:0][255:0];
 
     /* Scoreboard Declaration */
     scoreboard_base scb = new();
@@ -43,64 +43,82 @@ module crc_top;
         clk = 1'b0;
     end
 
-    function automatic [31:0] crc32_reference_model(logic [BYTE-1:0] i_byte_stream[$]);
+function automatic [31:0] crc32_reference_model(crc_word_t i_word_stream[$]);
+    logic [31:0] crc_state = 32'hFFFFFFFF;
+    logic [7:0]  table_index;
+    logic [7:0]  curr_byte;
+    crc_word_t crc_data;
+    integer i, b;
 
-        /* Intermediary Signals */
-        reg [31:0] crc_state = 32'hFFFFFFFF;
-        reg [31:0] crc_state_rev;
-        reg [7:0] i_byte_rev, table_index;
-        integer i;
+    repeat(i_word_stream.size()) begin
 
-        //Iterate through each byte in the stream
-        foreach(i_byte_stream[i]) begin
-             /* Reverse the bit order of the byte in question */
-            i_byte_rev = 0;
-            for(int j = 0; j < 8; j++)
-                i_byte_rev[j] = i_byte_stream[i][7-j];
+        crc_data = i_word_stream.pop_back();
 
-            /* XOR this value with the MSB of teh current CRC State */
-            table_index = i_byte_rev ^ crc_state[31:24];
+        // Process each 32-bit word byte-by-byte, starting with LSB (Byte0 on wire)
+        for (b = 0; b < 4; b++) begin
+            curr_byte = crc_data.data_word[8*b +: 8];
 
-            /* Index into the LUT and XOR the output with the shifted CRC */
-            crc_state = {crc_state[24:0], 8'h0} ^ lut_0[table_index];
+            $display("0x%02h", curr_byte);
 
+            // Standard Sarwate update, LSB-first, LUT contains reflected values
+            table_index = curr_byte ^ crc_state[7:0];
+            crc_state   = (crc_state >> 8) ^ lut[0][table_index];
         end
+    end
 
-        /* Reverse & Invert the final CRC State after all bytes have been iterated through */
-        crc_state_rev = 32'h0;
-        for(int k = 0; k < 32; k++) 
-            crc_state_rev[k] = crc_state[(CRC_WIDTH-1)-k];
+    // Invert at the end (no final reflection since LUT is already reflected)
+    crc32_reference_model = ~crc_state;
+endfunction
 
-        crc32_reference_model = ~crc_state_rev;
 
-    endfunction : crc32_reference_model
+function automatic logic [31:0] crc32_slicing_by_4_words(crc_word_t word_stream[$]);
+    logic [31:0] crc = 32'hFFFFFFFF;
+    crc_word_t crc_word;
+    logic [7:0] bytes [4], idx;
+
+    repeat(word_stream.size()) begin
+        crc_word = word_stream.pop_back();
+
+        $display("Word: %04h", crc_word.data_word);
+
+        //Isolate Each individual byte
+        for(int i = 0; i < 4; i++) begin
+            bytes[i] = crc_word.data_word[8*i +: 8];
+            idx = (crc[7:0] ^ bytes[i]) & 8'hFF;
+            crc  = (crc >> 8) ^ lut[0][idx]; 
+        end
+    end
+
+    return ~crc; 
+endfunction
 
     task drive_crc32_data();
         int i;
-        logic [CRC_WIDTH-1:0] ref_crc;
+        logic [CRC_WIDTH-1:0] ref_crc, ref_slicing_crc;
         crc_word_t data;
         
         // Generate a stream of bytes used for teh CRC32 reference model
-        generate_byte_stream();
+        generate_word_stream();
 
-        foreach(byte_stream[i])
-            $display("0x%02h", byte_stream[i]);
+        foreach(word_stream[i]) begin
+            $display("Data Word[%0d] 0x%08h", i, word_stream[i].data_word);     
+            $display("Data Valid: %04b", word_stream[i].data_valid);
+        end   
 
         // Pass the generated data through the reference model
-        ref_crc = crc32_reference_model(byte_stream);
+        ref_crc = crc32_reference_model(word_stream);
 
         $display("Ref Model CRC: %0h", ref_crc);
 
         // Generate 32-bit word values to transmit to the DUT
-        convert_byte_to_32_bits();
+        //convert_byte_to_32_bits();
+
+        ref_slicing_crc = crc32_slicing_by_4_words(word_stream);
+
+        $display("Slicing Reference: %0h", ref_slicing_crc);
 
         repeat(word_stream.size()) begin
-            $display("Number of streams: %0d", word_stream.size());
             data = word_stream.pop_front();
-
-            $display("Printing Converted word stream!");
-            $display("Data: %08h", data.data_word);
-            $display("Valid: %04b", data.data_valid);
 
             data_word <= data.data_word;
             data_valid <= data.data_valid;
@@ -124,9 +142,12 @@ module crc_top;
 
     //Init CRC LUT
     initial begin
-        $readmemh("table0.txt", lut_0);
+        $readmemh("table0.txt", lut[0]);
+        $readmemh("table1.txt", lut[1]);
+        $readmemh("table2.txt", lut[2]);
+        $readmemh("table3.txt", lut[3]);            
     end
-
+    
     //Testbench Logic
     initial begin
         i_reset_n = 1'b0;

@@ -36,6 +36,25 @@ initial begin
     $readmemh("table3.txt", lut_3);            
 end
 
+/* -------------- Decoding Input Word Logic -------------- */
+
+logic [7:0]     data_bytes [3:0];
+
+always_comb begin
+    // Isolate each of the individual bytes within the word
+    data_bytes[0] = i_data[31:24];
+    data_bytes[1] = i_data[23:16];
+    data_bytes[2] = i_data[15:8];
+    data_bytes[3] = i_data[7:0];
+    
+    // For each valid byte within the data word, reverse the bits
+    for(int i = 0; i < 4; i++) begin
+        if (i_data_valid[i]) 
+            data_bytes[i] = {data_bytes[i][0], data_bytes[i][1], data_bytes[i][2], data_bytes[i][3], data_bytes[i][4], data_bytes[i][5], data_bytes[i][6], data_bytes[i][7]};
+    end     
+end
+
+
 /* -------------- LUT Indexing Logic -------------- */
 
 logic [7:0]             table_index[3:0];
@@ -51,10 +70,10 @@ end
 
 always_comb begin
     case (i_data_valid)
-        4'b1111: o_crc =  lut_3[table_index[3]] ^
+        4'b1111: o_crc =  (lut_3[table_index[3]] ^
                           lut_2[table_index[2]] ^
                           lut_1[table_index[1]] ^
-                          lut_0[table_index[0]];
+                          lut_0[table_index[0]]);
 
         4'b0111: o_crc = lut_2[table_index[2]] ^
                           lut_1[table_index[1]] ^

@@ -1,31 +1,44 @@
 #include <stdio.h>
 #include <stdint.h>
+ 
+#define TABLE_SIZE 256
 
-#define POLY 0x04C11DB7  
-#define TABLE_SIZE  256
+// Uncomment to generate LSB-first tables instead of MSB-first
+#define LSB_FIRST 1
+
+#if LSB_FIRST
+    #define POLY 0xEDB88320
+#else
+    #define POLY 0x04C11DB7 
+#endif
 
 /* Generate remainders for LUT0 */
 void generate_table0(uint32_t table[TABLE_SIZE]) {
-
     for (uint32_t i_byte = 0; i_byte < TABLE_SIZE; i_byte++) {  
-        uint32_t crc_byte = 0;
+        uint32_t crc_byte;
 
-        crc_byte = (i_byte << 24) ^ crc_byte;
-
-        // Perform modulo-2 arithmetic for each bit
-        for (uint8_t i = 0; i < 8; i++) {
-            
-            if ((crc_byte & 0x80000000) != 0)
+#if LSB_FIRST
+        crc_byte = i_byte;
+        for (int i = 0; i < 8; i++) {
+            if (crc_byte & 0x01)
+                crc_byte = (crc_byte >> 1) ^ POLY;
+            else
+                crc_byte >>= 1;
+        }
+#else
+        crc_byte = (i_byte << 24);
+        for (int i = 0; i < 8; i++) {
+            if (crc_byte & 0x80000000)
                 crc_byte = (crc_byte << 1) ^ POLY;
             else
                 crc_byte <<= 1;
         }
-        
+#endif
         table[i_byte] = crc_byte;
     }
 }
 
-// Generate tables 1 through 3
+/* Generate tables 1 through 3 */
 void generate_tables(uint32_t table0[TABLE_SIZE],
                      uint32_t table1[TABLE_SIZE],
                      uint32_t table2[TABLE_SIZE],
@@ -33,17 +46,23 @@ void generate_tables(uint32_t table0[TABLE_SIZE],
     for (int i = 0; i < TABLE_SIZE; i++) {
         uint32_t c;
 
-        // Advance 1 byte
+#if LSB_FIRST
+        // LSB-first slicing-by-4 derivation
+        c = table0[i];
+        table1[i] = (c >> 8) ^ table0[c & 0xFF];
+        c = table1[i];
+        table2[i] = (c >> 8) ^ table0[c & 0xFF];
+        c = table2[i];
+        table3[i] = (c >> 8) ^ table0[c & 0xFF];
+#else
+        // MSB-first (original)
         c = table0[i];
         table1[i] = (c << 8) ^ table0[(c >> 24) & 0xFF];
-
-        // Advance 2 bytes
         c = table1[i];
         table2[i] = (c << 8) ^ table0[(c >> 24) & 0xFF];
-
-        // Advance 3 bytes
         c = table2[i];
         table3[i] = (c << 8) ^ table0[(c >> 24) & 0xFF];
+#endif
     }
 }
 

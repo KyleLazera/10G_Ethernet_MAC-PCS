@@ -18,18 +18,25 @@ package crc_pkg;
     logic [BYTE-1:0]    byte_stream[$];
     crc_word_t          word_stream[$];
 
-    function void generate_byte_stream();
-        int num_bytes;
+    function automatic [7:0] reverse_byte(logic [7:0] i_byte);
+        return {i_byte[0], i_byte[1], i_byte[2], i_byte[3],  i_byte[4], i_byte[5], i_byte[6], i_byte[7]};
+    endfunction : reverse_byte
+
+    function void generate_word_stream();
+        crc_word_t data;
+        int num_words;
         int i;
+        
+        num_words = 2;
 
-        /* First randomize the size of the packet ensuring it is between 64 and 1500 bytes */
-        num_bytes = 8; //TODO: change to (64, 1500)
-
-        /* Randomize the values inside the packet */
-        repeat(num_bytes)
-            byte_stream.push_back($urandom_range(0, 255));
+        // TODO: Support non standard 32-bit words with not all valid
+        repeat(num_words) begin
+            data.data_word = $random;
+            data.data_valid = 4'hF;
+            word_stream.push_back(data);
+        end
     
-    endfunction : generate_byte_stream
+    endfunction : generate_word_stream
 
     function void convert_byte_to_32_bits();
         int num_bytes, num_words, remainder_bytes;
@@ -55,8 +62,8 @@ package crc_pkg;
             crc_data.data_valid = '0;
 
             repeat(remainder_bytes) begin
-                crc_data.data_word = {crc_data.data_word[23:0], byte_stream.pop_front()};
-                crc_data.data_valid = {crc_data.data_valid[3:1], 1'b1};
+                crc_data.data_word = {byte_stream.pop_back(), crc_data.data_word[DATA_WIDTH-1:8]};
+                crc_data.data_valid = {1'b1, crc_data.data_valid[3:1]};
             end
             word_stream.push_back(crc_data);
         end
