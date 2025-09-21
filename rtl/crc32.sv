@@ -12,7 +12,8 @@ module crc32#(
     input logic [CRC_WIDTH-1:0]     i_crc_state,
     input logic [DATA_BYTES-1:0]    i_data_valid,
 
-    output logic [DATA_WIDTH-1:0]   o_crc
+    output logic [DATA_WIDTH-1:0]   o_crc,
+    output logic [CRC_WIDTH-1:0]    o_crc_state
 );
 
 /* -------------- Local Parameters -------------- */
@@ -36,22 +37,15 @@ initial begin
     $readmemh("table3.txt", lut_3);            
 end
 
-/* -------------- Decoding Input Word Logic -------------- */
+/* -------------- Isolate Input Bytes -------------- */
 
-logic [7:0]     data_bytes [3:0];
+logic [7:0]     data_byte [3:0];
 
 always_comb begin
-    // Isolate each of the individual bytes within the word
-    data_bytes[0] = i_data[31:24];
-    data_bytes[1] = i_data[23:16];
-    data_bytes[2] = i_data[15:8];
-    data_bytes[3] = i_data[7:0];
-    
-    // For each valid byte within the data word, reverse the bits
-    for(int i = 0; i < 4; i++) begin
-        if (i_data_valid[i]) 
-            data_bytes[i] = {data_bytes[i][0], data_bytes[i][1], data_bytes[i][2], data_bytes[i][3], data_bytes[i][4], data_bytes[i][5], data_bytes[i][6], data_bytes[i][7]};
-    end     
+    data_byte[0] = i_data[7:0];
+    data_byte[1] = i_data[15:8];
+    data_byte[2] = i_data[23:16];
+    data_byte[3] = i_data[31:24]; 
 end
 
 
@@ -60,32 +54,46 @@ end
 logic [7:0]             table_index[3:0];
 
 always_comb begin
-    table_index[0] = (i_crc_state[31:24] ^ i_data[31:24]);
-    table_index[1] = (i_crc_state[23:16]  ^ i_data[23:16]);
-    table_index[2] = (i_crc_state[15:8] ^ i_data[15:8]);
-    table_index[3] = (i_crc_state[7:0] ^ i_data[7:0]);
+    table_index[0] = (i_crc_state[7:0] ^ data_byte[0]);
+    table_index[1] = (i_crc_state[15:8]  ^ data_byte[1]);
+    table_index[2] = (i_crc_state[23:16] ^ data_byte[2]);
+    table_index[3] = (i_crc_state[31:24] ^ data_byte[3]);
+end
+
+/* -------------- Parallelized CRC Calculation -------------- */
+
+logic [CRC_WIDTH-1:0]       crc_calc [3:0];
+
+always_comb begin
+    // 1 Valid Byte in word
+    crc_calc[0] = lut_0[table_index[0]];
+
+    // 2 Valid Bytes (Slicing-by-2)
+    crc_calc[1] = lut_0[table_index[1]] ^ lut_1[table_index[0]];
+
+    // 3 Valid Bytes 
+    crc_calc[2] = lut_0[table_index[2]] ^ lut_1[table_index[1]] ^ lut_2[table_index[0]];
+
+    // 4 Valid Bytes
+    crc_calc[3] = lut_0[table_index[3]] ^ lut_1[table_index[2]] ^ lut_2[table_index[1]] ^ lut_3[table_index[0]];
+end
+
+/* -------------- Selection CRC Logic -------------- */
+
+logic [CRC_WIDTH-1:0]       crc_next;
+
+always_comb begin
+    case(i_data_valid)
+        4'b1111: crc_next = crc_calc[3];
+        4'b0111: crc_next = crc_calc[2] ^ (i_crc_state >> 24);
+        4'b0011: crc_next = crc_calc[1] ^ (i_crc_state >> 16);
+        4'b0001: crc_next = crc_calc[0] ^ (i_crc_state >> 8);
+    endcase
 end
 
 /* -------------- Output Logic -------------- */
 
-always_comb begin
-    case (i_data_valid)
-        4'b1111: o_crc =  (lut_3[table_index[3]] ^
-                          lut_2[table_index[2]] ^
-                          lut_1[table_index[1]] ^
-                          lut_0[table_index[0]]);
-
-        4'b0111: o_crc = lut_2[table_index[2]] ^
-                          lut_1[table_index[1]] ^
-                          lut_0[table_index[0]];
-
-        4'b0011: o_crc = lut_1[table_index[1]] ^
-                          lut_0[table_index[0]];
-
-        4'b0001: o_crc = lut_0[table_index[0]];
-
-        default: o_crc = i_crc_state; 
-    endcase
-end
+assign o_crc = ~crc_next;
+assign o_crc_state = crc_next;
 
 endmodule

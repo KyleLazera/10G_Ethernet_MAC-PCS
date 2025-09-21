@@ -13,8 +13,11 @@ module crc_top;
     logic [DATA_WIDTH-1:0]      data_word;
     logic [CRC_WIDTH-1:0]       i_crc_state;
     logic [(DATA_WIDTH/8)-1:0]  data_valid;
-    logic [DATA_WIDTH-1:0]      crc_out;  
+    logic [DATA_WIDTH-1:0]      crc_out; 
+    logic [CRC_WIDTH-1:0]       o_crc_state; 
 
+    /* Independent Signals */
+    logic sof;
     logic [CRC_WIDTH-1:0] lut [3:0][255:0];
 
     /* Scoreboard Declaration */
@@ -32,7 +35,8 @@ module crc_top;
         .i_crc_state(i_crc_state),
         .i_data_valid(data_valid),
 
-        .o_crc(crc_out)
+        .o_crc(crc_out),
+        .o_crc_state(o_crc_state)
     );
 
     /* Clock Instantiation */
@@ -43,45 +47,50 @@ module crc_top;
         clk = 1'b0;
     end
 
-    task drive_crc32_data();
-        int i, j;
-        logic [CRC_WIDTH-1:0] ref_crc, ref_slicing_crc;
+    task crc32_test();
+        logic [CRC_WIDTH-1:0] ref_slicing_crc;
         crc_word_t data;
         crc_word_t word_stream[$];
+        int num_bytes;
+
+        num_bytes = $urandom_range(4, 1500);
+        $display("Num Bytes: %0d", num_bytes);
         
         // Generate a stream of bytes used for teh CRC32 reference model
-        generate_word_stream(4, word_stream);
-
-        // Pass the generated data through the reference model
-        ref_crc = crc32_sarwate_ref_model(word_stream, lut[0]);
+        generate_word_stream(num_bytes, word_stream);
 
         ref_slicing_crc = crc32_slicing_by_4(word_stream, lut);
 
-        if (ref_crc == ref_slicing_crc)
-            $display("%0h == %0h", ref_crc, ref_slicing_crc);
-        else
-            $display("Ref CRC: %0h != Slicing CRC: %0h", ref_crc, ref_slicing_crc);
+        sof <= 1'b1;
+        @(posedge clk);
+        sof <= 1'b0;
 
         repeat(word_stream.size()) begin
-            data = word_stream.pop_front();
+            data = word_stream.pop_back();
 
             data_word <= data.data_word;
             data_valid <= data.data_valid;
 
-            if (|data.data_valid)
-                i_crc_state <= crc_out;
-
             @(posedge clk);
         end
 
-    endtask : drive_crc32_data
+        assert(crc_out == ref_slicing_crc) begin
+            scb.record_success();
+        end else begin
+            $display("MISMATCH: Actual: %0h != Expected: %0h", crc_out, ref_slicing_crc);
+            scb.record_failure();
+        end
+
+    endtask : crc32_test
 
     /*** Logic to drive signals to the DUT ***/
 
     /* Always block to manage crc_state */
     always @(posedge clk) begin
-        if (!i_reset_n) 
+        if (!i_reset_n | sof) 
             i_crc_state <= 32'hFFFFFFFF;  
+        else 
+            i_crc_state <= o_crc_state;
          
     end
 
@@ -95,16 +104,22 @@ module crc_top;
     
     //Testbench Logic
     initial begin
+
+        int iter = 50;
+
+        sof = 1'b0;
         i_reset_n = 1'b0;
         #50;
         i_reset_n <= 1'b1;
         @(posedge clk);
 
-        test_slicing_model(lut);
+        //test_slicing_model(lut);
 
-        drive_crc32_data();
+        repeat(iter)
+            crc32_test();
 
         #100;
+        scb.print_summary();
         $finish;
 
     end
