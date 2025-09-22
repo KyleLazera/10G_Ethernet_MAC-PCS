@@ -10,6 +10,8 @@ module tx_mac_top;
     logic clk;
     logic reset_n;
 
+    logic xgmii_pause;
+
     /* Interface Declarations */
     axi_stream_if #(
         .DATA_WIDTH(DATA_WIDTH)
@@ -24,16 +26,17 @@ module tx_mac_top;
         .XGMII_CTRL_WIDTH(CTRL_WIDTH)
     ) DUT (
         .i_clk(clk),
-        .i_resent_n(reset_n),
+        .i_reset_n(reset_n),
 
         // XGMII Interface
         .o_xgmii_txd(),
         .o_xgmii_ctrl(),
         .o_xgmii_valid(),
-        .i_xgmii_pause(),
+        .i_xgmii_pause(xgmii_pause),
 
         // AXI-Stream Interface
         .s_axis_tdata(axi_if.s_axis_tdata),
+        .s_axis_tkeep(axi_if.s_axis_tkeep),
         .s_axis_tvalid(axi_if.s_axis_tvalid),
         .s_axis_tlast(axi_if.s_axis_tlast),
         .s_axis_trdy(axi_if.s_axis_trdy)
@@ -48,6 +51,8 @@ module tx_mac_top;
 
     /* Stimulus/Test */
     initial begin
+        // TODO: Make this dynamic
+        xgmii_pause = 1'b0;
 
         axi_if.init_axi_stream();
 

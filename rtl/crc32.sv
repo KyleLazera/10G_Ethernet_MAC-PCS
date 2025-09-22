@@ -1,3 +1,4 @@
+`timescale 1ns / 1ps
 
 module crc32#(
     parameter DATA_WIDTH = 32,
