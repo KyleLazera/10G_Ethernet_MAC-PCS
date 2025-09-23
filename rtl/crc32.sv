@@ -7,7 +7,6 @@ module crc32#(
     parameter DATA_BYTES = DATA_WIDTH/8
 )(
     input logic i_clk,
-    input logic i_reset_n,
 
     input logic [DATA_WIDTH-1:0]    i_data,
     input logic [CRC_WIDTH-1:0]     i_crc_state,

@@ -29,7 +29,6 @@ module crc_top;
         .CRC_WIDTH(CRC_WIDTH)
     ) DUT (
         .i_clk(clk),
-        .i_reset_n(i_reset_n),
 
         .i_data(data_word),
         .i_crc_state(i_crc_state),

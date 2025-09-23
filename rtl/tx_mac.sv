@@ -39,7 +39,7 @@ localparam [7:0] XGMII_START = 8'hFB;
 localparam [7:0] XGMII_TERM = 8'hFD;
 
 localparam MIN_PACKETS = 15;
-localparam CNTR_WIDTH = $clog2(MIN_PACKETS) + 1;
+localparam CNTR_WIDTH = $clog2(MIN_PACKETS);
 
 localparam CRC_WIDTH = 32;
 
@@ -56,10 +56,10 @@ logic [CNTR_WIDTH-1:0]          data_cntr = '0;
 
 //TODO: Needs to reset to 0 only when we get a tlast
 always_ff @(posedge i_clk) begin
-    if (!i_reset_n) begin
+    if (!i_reset_n | !s_axis_trdy) begin
         data_cntr <= '0;
     end else if (s_axis_tvalid & s_axis_trdy) begin
-        data_cntr <= (data_cntr == MIN_PACKETS) ? '0 : data_cntr + 1;
+        data_cntr <= data_cntr + 1;
     end else
         data_cntr <= data_cntr;
 end
@@ -68,14 +68,14 @@ end
 
 logic                       sof = 1'b0;
 logic [CRC_WIDTH-1:0]       crc_state = 32'hFFFFFFFF;
-logic [XGMII_DATA_WIDTH-1:0]crc_data_out, crc_data_in;
+logic [XGMII_DATA_WIDTH-1:0]crc_data_out, crc_data_in = '0;
 logic [CRC_WIDTH-1:0]       crc_state_next;
 logic [AXIS_KEEP_WIDTH-1:0] crc_data_valid = 1'b0;
 
 always_ff@(posedge i_clk) begin
-    if (!i_reset_n) begin
+    if (!i_reset_n | sof) begin
         crc_state <= 32'hFFFFFFFF;
-    end else begin
+    end else if (|s_axis_tkeep) begin
         crc_state <= crc_state_next;
     end
 end
@@ -85,7 +85,6 @@ crc32#(
     .CRC_WIDTH(32)
 ) CRC_Slicing_by_4 (
     .i_clk(i_clk),
-    .i_reset_n(sof | i_reset_n),
     .i_data(crc_data_in),
     .i_crc_state(crc_state),
     .i_data_valid(crc_data_valid),
@@ -93,26 +92,49 @@ crc32#(
     .o_crc_state(crc_state_next)
 );
 
+/* ---------------- Decoded Logic ---------------- */ 
+
+logic [XGMII_DATA_WIDTH-1:0]        temp_word;
+logic [AXIS_KEEP_WIDTH-1:0]         temp_valid;
+
+always_comb begin
+    for(int i = 0; i < AXIS_KEEP_WIDTH; i++) begin
+        temp_valid[i] = s_axis_tkeep[i];
+        if (s_axis_tkeep[i]) 
+            temp_word[(i*8) +: 8] = s_axis_tdata[(i*8) +: 8];
+        
+    end
+end
+
 /* ---------------- State Machine Logic ---------------- */ 
 state_t                             state_reg = IDLE;
+logic [4:0]                         ifg_cntr = '0;
 logic [(2*XGMII_DATA_WIDTH)-1:0]    data_pipe;
 logic [(2*XGMII_CTRL_WIDTH)-1:0]    ctrl_pipe;
+logic [(2*AXIS_KEEP_WIDTH)-1:0]     xgmii_valid_pipe;
+logic [2:0]                         valid_bytes = 3'b100;
 logic                               s_axis_trdy_reg = 1'b0;
-logic                               xgmii_valid_reg = 1'b0;
+logic                               term_set = 1'b0;
 
 always_ff @(posedge i_clk) begin
     if (!i_reset_n) begin
         state_reg <= IDLE;
+
         sof <= 1'b0;
+        term_set <= 1'b0;
+
+        valid_bytes <= 3'b100;
 
         // Init data to idle frames 
         data_pipe <= {8{8'h07}};
         ctrl_pipe <= 8'hFF;
-        xgmii_valid_reg <= 1'b1;
+        xgmii_valid_pipe <= {(2*AXIS_KEEP_WIDTH){1'b1}};
+
+        ifg_cntr <= '0;
+
     end else begin
 
         sof <= 1'b0;
-        xgmii_valid_reg <= 1'b1;
 
         // CRC Data Input
         crc_data_in <= s_axis_tdata;
@@ -121,34 +143,86 @@ always_ff @(posedge i_clk) begin
         s_axis_trdy_reg <= 1'b0;
 
         case(state_reg)
-            IDLE: begin
+            IDLE: begin  
+
+                term_set <= 1'b0;     
+                ifg_cntr <= '0;    
+
                 if(s_axis_tvalid) begin
+                    // Pipe Line logic 
                     data_pipe <= {ETH_SFD, {6{ETH_HDR}}, XGMII_START};
                     ctrl_pipe <= 8'h01;
+                    xgmii_valid_pipe <= {{AXIS_KEEP_WIDTH{1'b1}}, xgmii_valid_pipe[AXIS_KEEP_WIDTH-1:0]};
+
+                    // CRC Start of frame
                     sof <= 1'b1;
+
+                    s_axis_trdy_reg <= 1'b1;
                     state_reg <= DATA;
                 end
             end
             DATA: begin
                 s_axis_trdy_reg <= !i_xgmii_pause;
-                data_pipe <= {s_axis_tdata, data_pipe[(2*XGMII_DATA_WIDTH)-1 -: 32]};
+
+                data_pipe <= {temp_word, data_pipe[(2*XGMII_DATA_WIDTH)-1 -: 32]};
                 ctrl_pipe <= {4'h0, ctrl_pipe[(2*XGMII_CTRL_WIDTH)-1 -: 4]};
+                xgmii_valid_pipe <= {temp_valid, xgmii_valid_pipe[(2*AXIS_KEEP_WIDTH)-1 -: AXIS_KEEP_WIDTH]};
 
                 if (s_axis_tlast) begin
                     s_axis_trdy_reg <= 1'b0;
-                    state_reg <= (data_cntr < MIN_PACKETS) ? PADDING : CRC;
+                    valid_bytes <= s_axis_tkeep[0] + s_axis_tkeep[1] + s_axis_tkeep[2] + s_axis_tkeep[3];
+                    state_reg <= CRC;
                 end
             end
             PADDING: begin
 
             end
             CRC: begin
-                data_pipe <= {crc_data_out, data_pipe[(2*XGMII_DATA_WIDTH)-1 -: 32]};
-                ctrl_pipe <= {4'h0, ctrl_pipe[(2*XGMII_CTRL_WIDTH)-1 -: 4]};
+                case(valid_bytes)
+                    4'd1: begin
+                        data_pipe <= {{2{8'h07}}, XGMII_TERM, crc_data_out, data_pipe[39 -: 8]};
+                        xgmii_valid_pipe <= {3'b000, 4'hF, xgmii_valid_pipe[5 -: 1]};
+                        ctrl_pipe <= {2'b0, 1'b1, 1'b0, ctrl_pipe[(2*XGMII_CTRL_WIDTH)-1 -: 4]};
+                        term_set <= 1'b1;
+                    end
+                    4'd2: begin
+                        data_pipe <= {{1{8'h07}}, XGMII_TERM, crc_data_out, data_pipe[47 -: 16]};
+                        xgmii_valid_pipe <= {2'b00, 4'hF, xgmii_valid_pipe[6 -: 2]};
+                        ctrl_pipe <= {1'b0, 1'b1, 2'b0, ctrl_pipe[(2*XGMII_CTRL_WIDTH)-1 -: 4]};
+                        term_set <= 1'b1;
+                    end
+                    4'd3: begin
+                        data_pipe <= {XGMII_TERM, crc_data_out, data_pipe[55 -: 24]};
+                        xgmii_valid_pipe <= {1'b0, 4'hF, xgmii_valid_pipe[7 -: 3]};
+                        ctrl_pipe <= {1'b1, 3'b0, ctrl_pipe[(2*XGMII_CTRL_WIDTH)-1 -: 4]};
+                        term_set <= 1'b1;
+                    end
+                    4'd4: begin
+                        data_pipe <= {crc_data_out, data_pipe[(2*XGMII_DATA_WIDTH)-1 -: 32]};
+                        xgmii_valid_pipe <= {4'hF, xgmii_valid_pipe[8 -: 4]};
+                        ctrl_pipe <= {4'b0, ctrl_pipe[(2*XGMII_CTRL_WIDTH)-1 -: 4]};
+                    end
+                endcase
+
                 state_reg <= IFG;
+
             end
             IFG: begin
+                if (!term_set) begin
+                    data_pipe <= {{{3{8'h07}}, XGMII_TERM}, data_pipe[(2*XGMII_DATA_WIDTH)-1 -: 32]};
+                    ctrl_pipe <= {4'b1111, ctrl_pipe[(2*XGMII_CTRL_WIDTH)-1 -: 4]};
+                    term_set <= 1'b1;
+                end else begin
+                    if (ifg_cntr < 12) begin
+                        data_pipe <= {{4{8'h07}}, data_pipe[(2*XGMII_DATA_WIDTH)-1 -: 32]};
+                        ctrl_pipe <= {4'b1111, ctrl_pipe[(2*XGMII_CTRL_WIDTH)-1 -: 4]};
+                        ifg_cntr <= ifg_cntr + 1;
+                    end else
+                        state_reg <= IDLE;
+                        
+                end
 
+                xgmii_valid_pipe <= {4'hF, xgmii_valid_pipe[8 -: 4]};                
             end
         endcase
     end
@@ -157,6 +231,8 @@ end
 /* ---------------- Output Logic ---------------- */ 
 assign o_xgmii_txd = data_pipe[31:0];
 assign o_xgmii_ctrl = ctrl_pipe[3:0];
+assign o_xgmii_valid = xgmii_valid_pipe[AXIS_KEEP_WIDTH-1:0];
+
 assign s_axis_trdy = s_axis_trdy_reg;
 
 

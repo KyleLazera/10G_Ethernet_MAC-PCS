@@ -28,13 +28,14 @@ task init_axi_stream();
     s_axis_trdy = 1'b0;
 endtask: init_axi_stream
 
-//TODO: Add support for packets that are not divisble by 32
+//TODO: Add support for packets that are not divisble by 32 using tkeep
 task drive_data_axi_stream(ref logic [DATA_WIDTH-1:0] data_queue[$]);
 
     int data_size = data_queue.size();
 
     // Put intial data on the data line
     s_axis_tdata <= data_queue.pop_back();
+    s_axis_tkeep <= 4'hF;
 
     // Continue to transmit data while there is data in the queue
     while(data_queue.size()) begin
@@ -46,9 +47,8 @@ task drive_data_axi_stream(ref logic [DATA_WIDTH-1:0] data_queue[$]);
         // If AXI handshake is met, transmit data 
         if (s_axis_trdy & s_axis_tvalid) begin
             s_axis_tdata <= data_queue.pop_back();
-            s_axis_tkeep <= 4'hF;
 
-            if (data_queue.size() == 1)
+            if (data_queue.size() == 0)
                 s_axis_tlast <= 1'b1;
         end
 
@@ -57,6 +57,7 @@ task drive_data_axi_stream(ref logic [DATA_WIDTH-1:0] data_queue[$]);
 
     s_axis_tlast <= 1'b0;
     s_axis_tvalid <= 1'b0;
+    s_axis_tkeep <= 4'h0;
     @(posedge clk);
 
 

@@ -68,7 +68,7 @@ module tx_mac_top;
 
         axi_if.drive_data_axi_stream(tx_mac_data_queue);
 
-        #100;        
+        #1000;        
 
         $finish;
 
