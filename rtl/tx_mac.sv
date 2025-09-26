@@ -52,7 +52,7 @@ typedef enum logic[2:0] {
 }state_t;
 
 /* ---------------- Counter Logic ---------------- */ 
-logic [CNTR_WIDTH-1:0]          data_cntr = '0;
+
 
 //TODO: Needs to reset to 0 only when we get a tlast
 always_ff @(posedge i_clk) begin
@@ -109,6 +109,7 @@ end
 /* ---------------- State Machine Logic ---------------- */ 
 state_t                             state_reg = IDLE;
 logic [4:0]                         ifg_cntr = '0;
+logic [CNTR_WIDTH-1:0]              data_cntr = '0;
 logic [(2*XGMII_DATA_WIDTH)-1:0]    data_pipe;
 logic [(2*XGMII_CTRL_WIDTH)-1:0]    ctrl_pipe;
 logic [(2*AXIS_KEEP_WIDTH)-1:0]     xgmii_valid_pipe;
@@ -131,6 +132,7 @@ always_ff @(posedge i_clk) begin
         xgmii_valid_pipe <= {(2*AXIS_KEEP_WIDTH){1'b1}};
 
         ifg_cntr <= '0;
+        data_cntr <= '0;
 
     end else begin
 
@@ -146,7 +148,8 @@ always_ff @(posedge i_clk) begin
             IDLE: begin  
 
                 term_set <= 1'b0;     
-                ifg_cntr <= '0;    
+                ifg_cntr <= '0;  
+                data_cntr <= '0;  
 
                 if(s_axis_tvalid) begin
                     // Pipe Line logic 
@@ -171,24 +174,33 @@ always_ff @(posedge i_clk) begin
                 if (s_axis_tlast) begin
                     s_axis_trdy_reg <= 1'b0;
                     valid_bytes <= s_axis_tkeep[0] + s_axis_tkeep[1] + s_axis_tkeep[2] + s_axis_tkeep[3];
-                    state_reg <= CRC;
+                    state_reg <= (data_cntr < MIN_PACKETS) ? PADDING : CRC;
                 end
+
+                data_cntr <= data_cntr + 1; 
             end
             PADDING: begin
+                data_pipe <= {temp_word, data_pipe[(2*XGMII_DATA_WIDTH)-1 -: 32]};
+                ctrl_pipe <= {4'h0, ctrl_pipe[(2*XGMII_CTRL_WIDTH)-1 -: 4]};
+                xgmii_valid_pipe <= {temp_valid, xgmii_valid_pipe[(2*AXIS_KEEP_WIDTH)-1 -: AXIS_KEEP_WIDTH]};
 
+                if (data_cntr < MIN_PACKETS)
+                    data_cntr <= data_cntr + 1;
+                else
+                    state_reg <= CRC;
             end
             CRC: begin
                 case(valid_bytes)
                     4'd1: begin
                         data_pipe <= {{2{8'h07}}, XGMII_TERM, crc_data_out, data_pipe[39 -: 8]};
                         xgmii_valid_pipe <= {3'b000, 4'hF, xgmii_valid_pipe[5 -: 1]};
-                        ctrl_pipe <= {2'b0, 1'b1, 1'b0, ctrl_pipe[(2*XGMII_CTRL_WIDTH)-1 -: 4]};
+                        ctrl_pipe <= {3'b111, 1'b0, ctrl_pipe[(2*XGMII_CTRL_WIDTH)-1 -: 4]};
                         term_set <= 1'b1;
                     end
                     4'd2: begin
                         data_pipe <= {{1{8'h07}}, XGMII_TERM, crc_data_out, data_pipe[47 -: 16]};
                         xgmii_valid_pipe <= {2'b00, 4'hF, xgmii_valid_pipe[6 -: 2]};
-                        ctrl_pipe <= {1'b0, 1'b1, 2'b0, ctrl_pipe[(2*XGMII_CTRL_WIDTH)-1 -: 4]};
+                        ctrl_pipe <= {2'b11, 2'b0, ctrl_pipe[(2*XGMII_CTRL_WIDTH)-1 -: 4]};
                         term_set <= 1'b1;
                     end
                     4'd3: begin
