@@ -66,7 +66,7 @@ logic [AXIS_KEEP_WIDTH-1:0] crc_data_valid = 1'b0;
 always_ff@(posedge i_clk) begin
     if (!i_reset_n | sof) begin
         crc_state <= 32'hFFFFFFFF;
-    end else if (|s_axis_tkeep) begin
+    end else if (|decoded_axi_tkeep) begin
         crc_state <= crc_state_next;
     end
 end
@@ -99,7 +99,7 @@ always_comb begin
     // If we have not yet recieved the minimum number of bytes, we have to
     // pad the packet with 8'h00; The tkeep for these packets should be all 
     // 1's.
-    if (data_cntr < (MIN_NUM_WORDS-1))
+    if (data_cntr < (MIN_NUM_WORDS))
         decoded_axi_tkeep = 4'hF;
     else
         decoded_axi_tkeep = s_axis_tkeep;
@@ -181,11 +181,11 @@ always_ff @(posedge i_clk) begin
 
                 if (s_axis_tlast) begin
                     s_axis_trdy_reg <= 1'b0;
-                    valid_bytes <= s_axis_tkeep[0] + s_axis_tkeep[1] + s_axis_tkeep[2] + s_axis_tkeep[3];
+                    valid_bytes <= decoded_axi_tkeep[0] + decoded_axi_tkeep[1] + decoded_axi_tkeep[2] + decoded_axi_tkeep[3];
                     state_reg <= (data_cntr < (MIN_NUM_WORDS-1)) ? PADDING : CRC;
                 end
 
-                if (data_cntr < (MIN_NUM_WORDS-1)) 
+                if (data_cntr <= (MIN_NUM_WORDS-1)) 
                     data_cntr <= data_cntr + 1;
             end
             PADDING: begin

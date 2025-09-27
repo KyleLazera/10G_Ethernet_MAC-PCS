@@ -29,7 +29,7 @@ package mac_pkg;
         int num_bytes, num_words, remainder_bytes;
 
         //TODO: Randomize this value
-        num_bytes = 63;
+        num_bytes = 64;
         num_words = num_bytes/4;
         remainder_bytes = num_bytes % 4;
 
@@ -79,7 +79,7 @@ package mac_pkg;
 
     endfunction : generate_eth_hdr
 
-    function xgmii_stream_t convert_axi_to_xgmii(axi_stream_t axi_data);
+    function xgmii_stream_t convert_axi_to_xgmii(axi_stream_t axi_data, int packet_num);
 
         xgmii_stream_t xgmii;
 
@@ -87,7 +87,14 @@ package mac_pkg;
         xgmii.xgmii_valid = 1'b1;
 
         if (axi_data.axis_tlast) begin
-            xgmii.xgmii_ctrl = (axi_data.axis_tkeep == 4'b1111) ? 4'b0 : ~axi_data.axis_tkeep;
+            if (axi_data.axis_tkeep != 4'b1111 && packet_num <= 15) begin
+                xgmii.xgmii_ctrl = 4'h0;
+
+                for(int i = 0; i < 4; i++)
+                    if (!axi_data.axis_tkeep[i])
+                        xgmii.xgmii_data[i*8 +: 8] = 8'h00;
+            end else 
+                xgmii.xgmii_ctrl = (axi_data.axis_tkeep == 4'b1111) ? 4'b0 : ~axi_data.axis_tkeep;
         end else begin
             xgmii.xgmii_ctrl = 4'b0;
         end
@@ -117,17 +124,49 @@ package mac_pkg;
             axi_data_crc_q.delete();
         end
 
+        $display("AXI Size: %0d", data_stream_size);
+
         repeat(data_stream_size) begin
             axi_pkt = axi_data.pop_back();
-            xgmii_q.push_back(convert_axi_to_xgmii(axi_pkt));
+            xgmii_q.push_back(convert_axi_to_xgmii(axi_pkt, data_stream_size));
 
             // Convert to the CRC Word to pass into referenc model
-            axi_data_crc.data_word = axi_pkt.axis_tdata;
-            axi_data_crc.data_valid = axi_pkt.axis_tkeep;
+            if (axi_pkt.axis_tlast && (data_stream_size <= 15) && (axi_pkt.axis_tkeep != 4'hF)) begin
+                for(int i = 0; i < 4; i++) begin
+                    if (axi_pkt.axis_tkeep[i])
+                        axi_data_crc.data_word[i*8 +: 8] =  axi_pkt.axis_tdata[i*8 +: 8];
+                    else
+                        axi_data_crc.data_word[i*8 +: 8] =  8'h00;
+                end
+                axi_data_crc.data_valid = 4'hF;
+            end else begin
+                axi_data_crc.data_word = axi_pkt.axis_tdata;
+                axi_data_crc.data_valid = axi_pkt.axis_tkeep;
+            end
             axi_data_crc_q.push_front(axi_data_crc);
         end
 
-        //TODO: Handle Padding here
+        $display("Packet Size: %0d", xgmii_q.size());
+
+        // Add padding if we do not have 
+        while(xgmii_q.size() < 17) begin
+
+            xgmii.xgmii_data = 32'h0;
+            xgmii.xgmii_ctrl = 3'h0;
+            xgmii.xgmii_valid = 1'b1;
+            xgmii_q.push_back(xgmii);
+
+            axi_data_crc.data_word = 32'h0;
+            axi_data_crc.data_valid = 4'hF;
+            axi_data_crc_q.push_front(axi_data_crc);            
+        end
+
+        foreach(axi_data_crc_q[i]) begin
+            $display("%0h", axi_data_crc_q[i].data_word);
+
+        end
+
+        $display("Packet Size: %0d", xgmii_q.size());
 
         // Calculate and append CRC to end of XGMII Queue
         crc = crc32_slicing_by_4(axi_data_crc_q, lut);
@@ -195,7 +234,6 @@ package mac_pkg;
         logic [CRC_WIDTH-1:0] lut [3:0][255:0],
         ref xgmii_stream_t xgmii [$]    
     );
-        $display("AXI Data size: %0d", axi_data.size());
 
         // Generate and append ethernet header + XGMII start condition
         generate_eth_hdr(xgmii);
