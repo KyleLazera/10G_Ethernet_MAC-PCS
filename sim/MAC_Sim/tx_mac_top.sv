@@ -88,6 +88,7 @@ module tx_mac_top;
         reset_n <= 1'b1;
         @(posedge clk);
 
+
         generate_tx_data_stream(tx_mac_data_queue);
 
         tx_mac_golden_model(tx_mac_data_queue, lut, xgmii_ref_data);

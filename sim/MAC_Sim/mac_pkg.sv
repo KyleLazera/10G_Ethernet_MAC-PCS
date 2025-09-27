@@ -29,17 +29,21 @@ package mac_pkg;
         int num_bytes, num_words, remainder_bytes;
 
         //TODO: Randomize this value
-        num_bytes = 62;
+        num_bytes = 63;
         num_words = num_bytes/4;
         remainder_bytes = num_bytes % 4;
 
         $display("Number of Bytes to output: %0d", num_bytes);
 
-        repeat(num_words) begin
+        for(int i = 0; i < num_words; i++) begin
             tx_packet.axis_tdata = $random;
             tx_packet.axis_tkeep = 4'hF;
             tx_packet.axis_tvalid = 1'b1;
-            tx_packet.axis_tlast = 1'b0;
+
+            // Only set tlast here if the num_bytes is perfectly divisible by 4 (4 bytes = 32 bits)
+            if (i == (num_words - 1))
+                tx_packet.axis_tlast = (remainder_bytes == 0);
+
             queue.push_front(tx_packet);
         end
 
@@ -108,6 +112,11 @@ package mac_pkg;
         // Get size of data stream
         data_stream_size = axi_data.size();
 
+        // Ensure the CRC queue is empty before pushing data in
+        if (axi_data_crc_q.size()) begin
+            axi_data_crc_q.delete();
+        end
+
         repeat(data_stream_size) begin
             axi_pkt = axi_data.pop_back();
             xgmii_q.push_back(convert_axi_to_xgmii(axi_pkt));
@@ -120,7 +129,7 @@ package mac_pkg;
 
         //TODO: Handle Padding here
 
-        // Ca;culate and append CRC to end of XGMII Queue
+        // Calculate and append CRC to end of XGMII Queue
         crc = crc32_slicing_by_4(axi_data_crc_q, lut);
 
         $display("CRC Calculated: %0h", crc);
@@ -181,22 +190,18 @@ package mac_pkg;
 
     endfunction : eth_data_axi_to_xgmii
 
-    //TODO: Return xgmii_stream_t queue
     function void tx_mac_golden_model(
         axi_stream_t axi_data[$], 
         logic [CRC_WIDTH-1:0] lut [3:0][255:0],
         ref xgmii_stream_t xgmii [$]    
     );
+        $display("AXI Data size: %0d", axi_data.size());
+
         // Generate and append ethernet header + XGMII start condition
         generate_eth_hdr(xgmii);
 
         // Convert data words to xgmii
         eth_data_axi_to_xgmii(axi_data, lut, xgmii);
-
-        foreach(xgmii[i]) begin
-            $display("Data[%0d]: %0h", i, xgmii[i].xgmii_data);
-            $display("Ctrl [%0d]: %0h", i, xgmii[i].xgmii_ctrl);
-        end
 
     endfunction : tx_mac_golden_model
 

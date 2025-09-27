@@ -54,8 +54,8 @@ class tx_mac_scb extends scoreboard_base;
                 end
             end
         end else begin
+            $display("Expected Packet Size: %0d != Actual Packet Size: %0d", ref_data_size, actual_data_size);
             record_packet_failure();
-
         end
         
     endfunction : verify_data

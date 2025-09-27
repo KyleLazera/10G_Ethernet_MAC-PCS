@@ -37,9 +37,13 @@ localparam [7:0] ETH_PAD = 8'h00;
 
 localparam [7:0] XGMII_START = 8'hFB;
 localparam [7:0] XGMII_TERM = 8'hFD;
+localparam [7:0] XGMII_IDLE = 8'h07;
 
-localparam MIN_PACKETS = 15;
-localparam CNTR_WIDTH = $clog2(MIN_PACKETS);
+// The min number of bytes an ethernet packet is required to have is 60
+// data bytes. Each input word contains 4 bytes. Therefore, we need
+// 60/4 = 15 words.
+localparam MIN_NUM_WORDS = 15;          
+localparam CNTR_WIDTH = $clog2(MIN_NUM_WORDS);
 
 localparam CRC_WIDTH = 32;
 
@@ -50,19 +54,6 @@ typedef enum logic[2:0] {
     CRC,
     IFG
 }state_t;
-
-/* ---------------- Counter Logic ---------------- */ 
-
-
-//TODO: Needs to reset to 0 only when we get a tlast
-always_ff @(posedge i_clk) begin
-    if (!i_reset_n | !s_axis_trdy) begin
-        data_cntr <= '0;
-    end else if (s_axis_tvalid & s_axis_trdy) begin
-        data_cntr <= data_cntr + 1;
-    end else
-        data_cntr <= data_cntr;
-end
 
 /* ---------------- CRC32 Logic ---------------- */ 
 
@@ -92,16 +83,37 @@ crc32#(
     .o_crc_state(crc_state_next)
 );
 
-/* ---------------- Decoded Logic ---------------- */ 
+logic [CNTR_WIDTH-1:0]              data_cntr = '0;
 
-logic [XGMII_DATA_WIDTH-1:0]        temp_word;
-logic [AXIS_KEEP_WIDTH-1:0]         temp_valid;
+/* ---------------- Decoding Input Logic ---------------- */ 
+
+logic [XGMII_DATA_WIDTH-1:0]        decoded_xgmii_data;
+logic [XGMII_CTRL_WIDTH-1:0]        decoded_xgmii_ctrl;
+logic [AXIS_KEEP_WIDTH-1:0]         decoded_axi_tkeep;
 
 always_comb begin
+    // Any data bytes that are not intended to be kept (tkeep != 4'hF)
+    // will be replaced with 8'h00 in the decoded words.
+    decoded_xgmii_data = {XGMII_DATA_WIDTH{1'b0}};
+
+    // If we have not yet recieved the minimum number of bytes, we have to
+    // pad the packet with 8'h00; The tkeep for these packets should be all 
+    // 1's.
+    if (data_cntr < (MIN_NUM_WORDS-1))
+        decoded_axi_tkeep = 4'hF;
+    else
+        decoded_axi_tkeep = s_axis_tkeep;
+
+    // XGMII control encodes tdata bytes from the AXI Stream with a 0
+    // and idle (8'h07), xgmii start or terminate with a 1. tkeep will 
+    // be high for every axi byte we want to transmit, therefore, this
+    // should be a 0.
+    decoded_xgmii_ctrl = ~decoded_axi_tkeep;        
+
+    // Logic to decode the input word based on s_axis_tkeep
     for(int i = 0; i < AXIS_KEEP_WIDTH; i++) begin
-        temp_valid[i] = s_axis_tkeep[i];
         if (s_axis_tkeep[i]) 
-            temp_word[(i*8) +: 8] = s_axis_tdata[(i*8) +: 8];
+            decoded_xgmii_data[(i*8) +: 8] = s_axis_tdata[(i*8) +: 8];
         
     end
 end
@@ -109,7 +121,6 @@ end
 /* ---------------- State Machine Logic ---------------- */ 
 state_t                             state_reg = IDLE;
 logic [4:0]                         ifg_cntr = '0;
-logic [CNTR_WIDTH-1:0]              data_cntr = '0;
 logic [(2*XGMII_DATA_WIDTH)-1:0]    data_pipe;
 logic [(2*XGMII_CTRL_WIDTH)-1:0]    ctrl_pipe;
 logic [(2*AXIS_KEEP_WIDTH)-1:0]     xgmii_valid_pipe;
@@ -139,8 +150,8 @@ always_ff @(posedge i_clk) begin
         sof <= 1'b0;
 
         // CRC Data Input
-        crc_data_in <= s_axis_tdata;
-        crc_data_valid <= s_axis_tkeep;
+        crc_data_in <= decoded_xgmii_data;
+        crc_data_valid <= decoded_axi_tkeep;
 
         s_axis_trdy_reg <= 1'b0;
 
@@ -148,57 +159,55 @@ always_ff @(posedge i_clk) begin
             IDLE: begin  
 
                 term_set <= 1'b0;     
-                ifg_cntr <= '0;  
-                data_cntr <= '0;  
+                ifg_cntr <= '0;                 
+                sof <= 1'b1;
 
                 if(s_axis_tvalid) begin
-                    // Pipe Line logic 
                     data_pipe <= {ETH_SFD, {6{ETH_HDR}}, XGMII_START};
                     ctrl_pipe <= 8'h01;
                     xgmii_valid_pipe <= {{AXIS_KEEP_WIDTH{1'b1}}, xgmii_valid_pipe[AXIS_KEEP_WIDTH-1:0]};
 
-                    // CRC Start of frame
-                    sof <= 1'b1;
-
                     s_axis_trdy_reg <= 1'b1;
                     state_reg <= DATA;
-                end
+                end  
+                    
             end
             DATA: begin
                 s_axis_trdy_reg <= !i_xgmii_pause;
 
-                data_pipe <= {temp_word, data_pipe[(2*XGMII_DATA_WIDTH)-1 -: 32]};
+                data_pipe <= {decoded_xgmii_data, data_pipe[(2*XGMII_DATA_WIDTH)-1 -: 32]};
                 ctrl_pipe <= {4'h0, ctrl_pipe[(2*XGMII_CTRL_WIDTH)-1 -: 4]};
-                xgmii_valid_pipe <= {temp_valid, xgmii_valid_pipe[(2*AXIS_KEEP_WIDTH)-1 -: AXIS_KEEP_WIDTH]};
+                xgmii_valid_pipe <= {4'hF, xgmii_valid_pipe[(2*AXIS_KEEP_WIDTH)-1 -: AXIS_KEEP_WIDTH]};
 
                 if (s_axis_tlast) begin
                     s_axis_trdy_reg <= 1'b0;
                     valid_bytes <= s_axis_tkeep[0] + s_axis_tkeep[1] + s_axis_tkeep[2] + s_axis_tkeep[3];
-                    state_reg <= (data_cntr < MIN_PACKETS) ? PADDING : CRC;
+                    state_reg <= (data_cntr < (MIN_NUM_WORDS-1)) ? PADDING : CRC;
                 end
 
-                data_cntr <= data_cntr + 1; 
+                if (data_cntr < (MIN_NUM_WORDS-1)) 
+                    data_cntr <= data_cntr + 1;
             end
             PADDING: begin
-                data_pipe <= {temp_word, data_pipe[(2*XGMII_DATA_WIDTH)-1 -: 32]};
+                data_pipe <= {decoded_xgmii_data, data_pipe[(2*XGMII_DATA_WIDTH)-1 -: 32]};
                 ctrl_pipe <= {4'h0, ctrl_pipe[(2*XGMII_CTRL_WIDTH)-1 -: 4]};
-                xgmii_valid_pipe <= {temp_valid, xgmii_valid_pipe[(2*AXIS_KEEP_WIDTH)-1 -: AXIS_KEEP_WIDTH]};
+                xgmii_valid_pipe <= {4'hF, xgmii_valid_pipe[(2*AXIS_KEEP_WIDTH)-1 -: AXIS_KEEP_WIDTH]};
 
-                if (data_cntr < MIN_PACKETS)
-                    data_cntr <= data_cntr + 1;
-                else
+                if (data_cntr >= (MIN_NUM_WORDS-1))
                     state_reg <= CRC;
+                else 
+                    data_cntr <= data_cntr + 1;
             end
             CRC: begin
                 case(valid_bytes)
                     4'd1: begin
-                        data_pipe <= {{2{8'h07}}, XGMII_TERM, crc_data_out, data_pipe[39 -: 8]};
-                        xgmii_valid_pipe <= {3'b000, 4'hF, xgmii_valid_pipe[5 -: 1]};
+                        data_pipe <= {{2{XGMII_IDLE}}, XGMII_TERM, crc_data_out, data_pipe[39 -: 8]};
+                        xgmii_valid_pipe <= {7'b1111111, xgmii_valid_pipe[5 -: 1]};
                         ctrl_pipe <= {3'b111, 1'b0, ctrl_pipe[(2*XGMII_CTRL_WIDTH)-1 -: 4]};
                         term_set <= 1'b1;
                     end
                     4'd2: begin
-                        data_pipe <= {{1{8'h07}}, XGMII_TERM, crc_data_out, data_pipe[47 -: 16]};
+                        data_pipe <= {{1{XGMII_IDLE}}, XGMII_TERM, crc_data_out, data_pipe[47 -: 16]};
                         xgmii_valid_pipe <= {2'b00, 4'hF, xgmii_valid_pipe[6 -: 2]};
                         ctrl_pipe <= {2'b11, 2'b0, ctrl_pipe[(2*XGMII_CTRL_WIDTH)-1 -: 4]};
                         term_set <= 1'b1;
@@ -220,13 +229,14 @@ always_ff @(posedge i_clk) begin
 
             end
             IFG: begin
+
                 if (!term_set) begin
-                    data_pipe <= {{{3{8'h07}}, XGMII_TERM}, data_pipe[(2*XGMII_DATA_WIDTH)-1 -: 32]};
+                    data_pipe <= {{{3{XGMII_IDLE}}, XGMII_TERM}, data_pipe[(2*XGMII_DATA_WIDTH)-1 -: 32]};
                     ctrl_pipe <= {4'b1111, ctrl_pipe[(2*XGMII_CTRL_WIDTH)-1 -: 4]};
                     term_set <= 1'b1;
                 end else begin
                     if (ifg_cntr < 12) begin
-                        data_pipe <= {{4{8'h07}}, data_pipe[(2*XGMII_DATA_WIDTH)-1 -: 32]};
+                        data_pipe <= {{4{XGMII_IDLE}}, data_pipe[(2*XGMII_DATA_WIDTH)-1 -: 32]};
                         ctrl_pipe <= {4'b1111, ctrl_pipe[(2*XGMII_CTRL_WIDTH)-1 -: 4]};
                         ifg_cntr <= ifg_cntr + 1;
                     end else
