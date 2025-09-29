@@ -33,9 +33,10 @@ module tx_mac_top;
 
     /* Scoreboard */
     tx_mac_scb scb = new();
+    mac_coverage coverage = new();
 
     /* Queues */
-    xgmii_stream_t xgmii_ref_data [$], xgmii_actual_data[$];
+    xgmii_stream_t xgmii_ref_data [$], xgmii_actual_data[$], xgmii_new_ref[$];
 
     /* DUT */
     tx_mac #(
@@ -76,6 +77,7 @@ module tx_mac_top;
 
     /* Stimulus/Test */
     initial begin
+        int num_bytes;
 
         xgmii_if.init_xgmii();
         axi_if.init_axi_stream();
@@ -88,21 +90,41 @@ module tx_mac_top;
         reset_n <= 1'b1;
         @(posedge clk);
 
+        //while(!coverage.coverage_complete) begin
 
-        generate_tx_data_stream(tx_mac_data_queue);
+            // Generate data to transmit to DUT & Add num of bytes to coverage
+            num_bytes = generate_tx_data_stream(tx_mac_data_queue);
+            //coverage.add_sample(num_bytes);
 
-        tx_mac_golden_model(tx_mac_data_queue, lut, xgmii_ref_data);
+            // Pass data through golden model to get reference output
+            tx_mac_golden_model(tx_mac_data_queue, lut, xgmii_ref_data);
+            tx_mac_ref_model(tx_mac_data_queue, lut, xgmii_new_ref);
 
-        fork
-            begin
-                axi_if.drive_data_axi_stream(tx_mac_data_queue);
+            if (xgmii_new_ref.size() != xgmii_ref_data.size()) begin
+                $display("Reference Model Size Mismatch! New Model Size: %0d != Golden Model Size: %0d", xgmii_new_ref.size(), xgmii_ref_data.size());
             end
-            begin
-                xgmii_if.sample_xgmii_data(xgmii_actual_data);
-            end
-        join
 
-        scb.verify_data(xgmii_ref_data, xgmii_actual_data);
+            foreach(xgmii_new_ref[i]) begin
+                if (xgmii_new_ref[i].xgmii_data == xgmii_ref_data[i].xgmii_data)
+                    $display("%0h == %0h", xgmii_new_ref[i].xgmii_data, xgmii_ref_data[i].xgmii_data);
+                else
+                    $display("%0h != %0h", xgmii_new_ref[i].xgmii_data, xgmii_ref_data[i].xgmii_data);
+            end
+
+            // Drive data to DUT and sample output from DUT
+            fork
+                begin
+                    axi_if.drive_data_axi_stream(tx_mac_data_queue);
+                end
+                begin
+                    xgmii_if.sample_xgmii_data(xgmii_actual_data);
+                end
+            join
+
+            // Verify Data output against reference model
+            scb.verify_data(xgmii_ref_data, xgmii_actual_data);
+
+        //end
 
         #1000;        
         scb.print_summary();

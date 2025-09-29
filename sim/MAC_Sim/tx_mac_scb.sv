@@ -47,6 +47,7 @@ class tx_mac_scb extends scoreboard_base;
                 assert(actual_data[i] == expected_data[i]) begin
                     record_success();
                 end else begin
+                    $fatal("Data Mismatch on word %0d", i);
                     record_failure();
                     $display("XGMII Actual Data: %0h, XGMII Expected Data: %0h", actual_data[i].xgmii_data, expected_data[i].xgmii_data);
                     $display("XGMII Actual Control: %0h XGMII Expected Control: %0h", actual_data[i].xgmii_ctrl, expected_data[i].xgmii_ctrl);

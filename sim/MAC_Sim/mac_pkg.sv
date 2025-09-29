@@ -24,16 +24,14 @@ package mac_pkg;
     /* Data Queues */
     axi_stream_t tx_mac_data_queue[$];
 
-    function void generate_tx_data_stream(ref axi_stream_t queue[$]);
+    function int generate_tx_data_stream(ref axi_stream_t queue[$]);
         axi_stream_t tx_packet;
         int num_bytes, num_words, remainder_bytes;
 
         //TODO: Randomize this value
-        num_bytes = 64;
+        num_bytes = 56;
         num_words = num_bytes/4;
         remainder_bytes = num_bytes % 4;
-
-        $display("Number of Bytes to output: %0d", num_bytes);
 
         for(int i = 0; i < num_words; i++) begin
             tx_packet.axis_tdata = $random;
@@ -59,188 +57,200 @@ package mac_pkg;
             queue.push_front(tx_packet);            
         end
 
+        return num_bytes;
+
     endfunction : generate_tx_data_stream
 
-    function void generate_eth_hdr(ref xgmii_stream_t xgmii_q[$]);
-
-        xgmii_stream_t  xgmii_eth_hdr;
-
-        // Generate first part of eth header + start condition
-        xgmii_eth_hdr.xgmii_data = 32'h555555fb;
-        xgmii_eth_hdr.xgmii_ctrl = 4'h1;
-        xgmii_eth_hdr.xgmii_valid = 1'b1;
-        xgmii_q.push_back(xgmii_eth_hdr);
-
-        // Generate Second part of eth header with SFD
-        xgmii_eth_hdr.xgmii_data = 32'hd5555555;
-        xgmii_eth_hdr.xgmii_ctrl = 4'h0;
-        xgmii_eth_hdr.xgmii_valid = 1'b1;
-        xgmii_q.push_back(xgmii_eth_hdr);
-
-    endfunction : generate_eth_hdr
-
-    function xgmii_stream_t convert_axi_to_xgmii(axi_stream_t axi_data, int packet_num);
-
-        xgmii_stream_t xgmii;
-
-        xgmii.xgmii_data = axi_data.axis_tdata;
-        xgmii.xgmii_valid = 1'b1;
-
-        if (axi_data.axis_tlast) begin
-            if (axi_data.axis_tkeep != 4'b1111 && packet_num <= 15) begin
-                xgmii.xgmii_ctrl = 4'h0;
-
-                for(int i = 0; i < 4; i++)
-                    if (!axi_data.axis_tkeep[i])
-                        xgmii.xgmii_data[i*8 +: 8] = 8'h00;
-            end else 
-                xgmii.xgmii_ctrl = (axi_data.axis_tkeep == 4'b1111) ? 4'b0 : ~axi_data.axis_tkeep;
-        end else begin
-            xgmii.xgmii_ctrl = 4'b0;
-        end
-
-        return xgmii;
-
-    endfunction : convert_axi_to_xgmii
-
-    function void eth_data_axi_to_xgmii(
-        axi_stream_t axi_data[$],
-        logic [CRC_WIDTH-1:0] lut [3:0][255:0],
-        ref xgmii_stream_t xgmii_q[$]
-    );
-
-        int             data_stream_size;
-        logic [31:0]    crc;
-        axi_stream_t    axi_pkt;
-        xgmii_stream_t  xgmii;
-        crc_word_t      axi_data_crc;
-        crc_word_t      axi_data_crc_q[$];
-
-        // Get size of data stream
-        data_stream_size = axi_data.size();
-
-        // Ensure the CRC queue is empty before pushing data in
-        if (axi_data_crc_q.size()) begin
-            axi_data_crc_q.delete();
-        end
-
-        $display("AXI Size: %0d", data_stream_size);
-
-        repeat(data_stream_size) begin
-            axi_pkt = axi_data.pop_back();
-            xgmii_q.push_back(convert_axi_to_xgmii(axi_pkt, data_stream_size));
-
-            // Convert to the CRC Word to pass into referenc model
-            if (axi_pkt.axis_tlast && (data_stream_size <= 15) && (axi_pkt.axis_tkeep != 4'hF)) begin
-                for(int i = 0; i < 4; i++) begin
-                    if (axi_pkt.axis_tkeep[i])
-                        axi_data_crc.data_word[i*8 +: 8] =  axi_pkt.axis_tdata[i*8 +: 8];
-                    else
-                        axi_data_crc.data_word[i*8 +: 8] =  8'h00;
-                end
-                axi_data_crc.data_valid = 4'hF;
-            end else begin
-                axi_data_crc.data_word = axi_pkt.axis_tdata;
-                axi_data_crc.data_valid = axi_pkt.axis_tkeep;
-            end
-            axi_data_crc_q.push_front(axi_data_crc);
-        end
-
-        $display("Packet Size: %0d", xgmii_q.size());
-
-        // Add padding if we do not have 
-        while(xgmii_q.size() < 17) begin
-
-            xgmii.xgmii_data = 32'h0;
-            xgmii.xgmii_ctrl = 3'h0;
-            xgmii.xgmii_valid = 1'b1;
-            xgmii_q.push_back(xgmii);
-
-            axi_data_crc.data_word = 32'h0;
-            axi_data_crc.data_valid = 4'hF;
-            axi_data_crc_q.push_front(axi_data_crc);            
-        end
-
-        foreach(axi_data_crc_q[i]) begin
-            $display("%0h", axi_data_crc_q[i].data_word);
-
-        end
-
-        $display("Packet Size: %0d", xgmii_q.size());
-
-        // Calculate and append CRC to end of XGMII Queue
-        crc = crc32_slicing_by_4(axi_data_crc_q, lut);
-
-        $display("CRC Calculated: %0h", crc);
-
-        data_stream_size = xgmii_q.size();
-
-        case(xgmii_q[data_stream_size-1].xgmii_ctrl)
-            4'b0000: begin
-                xgmii.xgmii_data = crc;
-                xgmii.xgmii_ctrl = 4'd0;
-                xgmii.xgmii_valid = 1'b1;
-                xgmii_q.push_back(xgmii);
-            end
-            4'b1110: begin
-                for(int i = 0; i < 2; i++) begin
-                    if (i == 0) begin
-                        xgmii_q[data_stream_size-1].xgmii_data[31:8] = crc[23:0];
-                        xgmii_q[data_stream_size-1].xgmii_ctrl = 4'b0000;
-                        xgmii_q[data_stream_size-1].xgmii_valid = 1'b1;
-                    end else begin
-                        xgmii.xgmii_data = {{2{8'h07}}, 8'hFD, crc[31:24]};
-                        xgmii.xgmii_ctrl = 4'b1110;
-                        xgmii.xgmii_valid = 1'b1;
-                        xgmii_q.push_back(xgmii);
-                    end
-                end
-            end
-            4'b1100: begin
-                for(int i = 0; i < 2; i++) begin
-                    if (i == 0) begin
-                        xgmii_q[data_stream_size-1].xgmii_data[31:16] = crc[15:0];
-                        xgmii_q[data_stream_size-1].xgmii_ctrl = 4'b0000;
-                        xgmii_q[data_stream_size-1].xgmii_valid = 1'b1;
-                    end else begin
-                        xgmii.xgmii_data = {8'h07, 8'hFD, crc[31:16]};
-                        xgmii.xgmii_ctrl = 4'b1100;
-                        xgmii.xgmii_valid = 1'b1;
-                        xgmii_q.push_back(xgmii);
-                    end
-                end
-            end     
-            4'b1000: begin
-                for(int i = 0; i < 2; i++) begin
-                    if (i == 0) begin
-                        xgmii_q[data_stream_size-1].xgmii_data[31:24] = crc[7:0];
-                        xgmii_q[data_stream_size-1].xgmii_ctrl = 4'b0000;
-                        xgmii_q[data_stream_size-1].xgmii_valid = 1'b1;
-                    end else begin
-                        xgmii.xgmii_data = {8'hFD, crc[31:8]};
-                        xgmii.xgmii_ctrl = 4'b1000;
-                        xgmii.xgmii_valid = 1'b1;
-                        xgmii_q.push_back(xgmii);
-                    end
-                end
-            end                      
-        endcase        
-
-
-    endfunction : eth_data_axi_to_xgmii
-
-    function void tx_mac_golden_model(
+    function void tx_mac_ref_model(
         axi_stream_t axi_data[$], 
         logic [CRC_WIDTH-1:0] lut [3:0][255:0],
         ref xgmii_stream_t xgmii [$]    
     );
 
-        // Generate and append ethernet header + XGMII start condition
-        generate_eth_hdr(xgmii);
+        typedef enum {
+            HEADER,
+            DATA,
+            PADDING,
+            CRC,
+            TERMINATE,
+            IFG,
+            COMPLETE
+        } state_t;
 
-        // Convert data words to xgmii
-        eth_data_axi_to_xgmii(axi_data, lut, xgmii);
+        state_t                     state = HEADER;
+        logic [(2*DATA_WIDTH)-1:0]  data_shift_reg;
+        logic [(2*CTRL_WIDTH)-1:0]  ctrl_shift_reg;
+        logic [DATA_WIDTH-1:0]      crc;
+        logic [DATA_WIDTH-1:0]      decoded_tdata;
+        logic [CTRL_WIDTH-1:0]      decoded_tkeep;
+        axi_stream_t                axi_pkt;  
+        crc_word_t                  axi_data_crc[$];  
+        int                         data_cntr = 0;
+        int                         terminate_set = 0;
 
-    endfunction : tx_mac_golden_model
+        while(state != COMPLETE) begin
+
+            case(state)
+                // Generate the header data (Preamble + SFD))
+                HEADER: begin
+                    data_shift_reg = {8'hD5, {6{8'h55}}, 8'hFB};
+                    ctrl_shift_reg = 8'b00000001;
+                    state = DATA;
+
+                    xgmii.push_back('{xgmii_data: data_shift_reg[31:0], xgmii_ctrl: ctrl_shift_reg[3:0], xgmii_valid: 1'b1});
+                end
+                DATA: begin
+                    axi_pkt = axi_data.pop_back();
+
+                    // Wehn recieveing the last work, if we have not recieved the minimum number of bytes (60 bytes)
+                    // and tkeep != 4'b1111, we need to add padding. Therefore, we need to adjust the tkeep by changing
+                    // any 0 bits to 1's
+                    if (axi_pkt.axis_tlast && axi_pkt.axis_tkeep != 4'hF && data_cntr <= 14)
+                        decoded_tkeep = 4'hF;
+                    else
+                        decoded_tkeep = axi_pkt.axis_tkeep;
+
+                    // Decode the input data based on the tkeep values - any byte that has an associated
+                    // tkeep == 0, we set that byte to 0 in the decoded data
+                    for(int i = 0; i < 4; i++) begin
+                        if (axi_pkt.axis_tkeep[i])
+                            decoded_tdata[i*8 +: 8] =  axi_pkt.axis_tdata[i*8 +: 8];
+                        else
+                            decoded_tdata[i*8 +: 8] =  8'h00;
+                    end                        
+
+                    data_shift_reg = {decoded_tdata, data_shift_reg[(2*DATA_WIDTH)-1 -: DATA_WIDTH]};
+                    ctrl_shift_reg = {~decoded_tkeep, ctrl_shift_reg[(2*CTRL_WIDTH)-1 -: CTRL_WIDTH]};
+                    axi_data_crc.push_front('{data_word: decoded_tdata, data_valid: decoded_tkeep});
+
+                    if (axi_pkt.axis_tlast) begin
+                        if (data_cntr < 14) begin
+                            state = PADDING;
+                        end else begin
+                            state = CRC;
+                        end
+                    end
+
+                    data_cntr++;
+
+                    xgmii.push_back('{xgmii_data: data_shift_reg[31:0], xgmii_ctrl: ctrl_shift_reg[3:0], xgmii_valid: 1'b1});
+                end
+                PADDING: begin
+                    // Add padding to the data word as well as tot eh CRC calculation
+                    data_shift_reg = {8'h00, data_shift_reg[(2*DATA_WIDTH)-1 -: DATA_WIDTH]};
+                    ctrl_shift_reg = {4'h0, ctrl_shift_reg[(2*CTRL_WIDTH)-1 -: CTRL_WIDTH]}; 
+                    axi_data_crc.push_front('{data_word: 8'h00, data_valid: 4'hF});
+
+                    if (data_cntr >= 14) begin
+                        state = CRC;
+                    end
+
+                    data_cntr++;        
+
+                    xgmii.push_back('{xgmii_data: data_shift_reg[31:0], xgmii_ctrl: ctrl_shift_reg[3:0], xgmii_valid: 1'b1});           
+                end
+                CRC: begin
+                    crc = crc32_slicing_by_4(axi_data_crc, lut);
+                    
+                    $display("CRC: %0h", crc);
+                    $display("Data Register: %0h", data_shift_reg);
+                    $display("Ctrl Register: %8b", ctrl_shift_reg);
+
+                    case(~ctrl_shift_reg[(2*CTRL_WIDTH)-1:CTRL_WIDTH])
+                        4'b0001: begin
+                            data_shift_reg = {{2{8'h07}}, 8'hFD, crc, data_shift_reg[39 -: 8]};
+                            ctrl_shift_reg = {3'b111, 1'b0, ctrl_shift_reg[(2*CTRL_WIDTH)-1 -: 4]};
+                            state = IFG;
+                        end
+                        4'b0011: begin
+                            data_shift_reg = {{1{8'h07}}, 8'hFD, crc, data_shift_reg[47 -: 16]};
+                            ctrl_shift_reg = {2'b11, 2'b0, ctrl_shift_reg[(2*CTRL_WIDTH)-1 -: 4]};
+                            state = IFG;
+                        end
+                        4'b0111: begin
+                            data_shift_reg = {8'hFD, crc, data_shift_reg[55 -: 24]};
+                            ctrl_shift_reg = {1'b1, 3'b0, ctrl_shift_reg[(2*CTRL_WIDTH)-1 -: 4]};
+                            state = IFG;
+                        end
+                        4'b1111: begin
+                            data_shift_reg = {crc, data_shift_reg[(2*DATA_WIDTH)-1 -: DATA_WIDTH]};
+                            ctrl_shift_reg = {4'b0, ctrl_shift_reg[(2*CTRL_WIDTH)-1 -: 4]};
+                            state = TERMINATE;
+                        end
+                    endcase
+
+                    $display("Data Register: %0h", data_shift_reg);
+                    $display("Ctrl Register: %0h", ctrl_shift_reg);     
+
+                    xgmii.push_back('{xgmii_data: data_shift_reg[31:0], xgmii_ctrl: ctrl_shift_reg[3:0], xgmii_valid: 1'b1});               
+                    
+                end
+                TERMINATE : begin
+                    data_shift_reg = {{3{8'h07}}, 8'hFD, data_shift_reg[(2*DATA_WIDTH)-1 -: DATA_WIDTH]};
+                    ctrl_shift_reg = {4'b1111, ctrl_shift_reg[(2*CTRL_WIDTH)-1 -: 4]};  
+                    state = IFG;
+                end
+                IFG: begin
+                    data_shift_reg = {{4{8'h07}}, data_shift_reg[(2*DATA_WIDTH)-1 -: DATA_WIDTH]};
+                    ctrl_shift_reg = {4'b1111, ctrl_shift_reg[(2*CTRL_WIDTH)-1 -: 4]};
+
+                    state = COMPLETE;
+                end
+
+            endcase            
+        end
+
+    endfunction : tx_mac_ref_model
+
+        class mac_coverage;
+
+        typedef struct{
+            int packets_over_60_bytes;
+            int packets_under_60_bytes;
+            int remainder_bytes_3;
+            int remainder_bytes_2;
+            int remainder_bytes_1;
+            int remainder_bytes_0;
+        } coverage_t;
+
+        int coverage_complete;
+        coverage_t cov_bins;
+
+
+        function new();
+            coverage_complete = 0;
+            cov_bins = '{default:0};
+        endfunction
+
+        function void add_sample(int sample);
+            
+            // Sample whether we have packets over 60 bytes or under
+            if (sample >= 60)
+                cov_bins.packets_over_60_bytes++;
+            else
+                cov_bins.packets_under_60_bytes++;
+
+            // Sample how many remaidner bytes were in the generated packet
+            if (sample % 4 == 3)
+                cov_bins.remainder_bytes_3++;
+            else if (sample % 4 == 2)
+                cov_bins.remainder_bytes_2++;
+            else if (sample % 4 == 1)
+                cov_bins.remainder_bytes_1++;
+            else
+                cov_bins.remainder_bytes_0++;
+
+            // Update the coverage complete flag
+            if ((cov_bins.packets_over_60_bytes > 10) &&
+                (cov_bins.packets_under_60_bytes > 10) &&
+                (cov_bins.remainder_bytes_3 > 5) &&
+                (cov_bins.remainder_bytes_2 > 5) &&
+                (cov_bins.remainder_bytes_1 > 5) &&
+                (cov_bins.remainder_bytes_0 > 5))
+                coverage_complete = 1;
+
+        endfunction : add_sample
+
+    endclass : mac_coverage
 
 endpackage : mac_pkg
