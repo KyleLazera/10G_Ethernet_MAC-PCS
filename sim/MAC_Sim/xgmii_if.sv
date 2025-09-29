@@ -28,6 +28,9 @@ task sample_xgmii_data(output xgmii_stream_t sampled_data[$]);
     // TODO: Make dynamic 
     i_xgmii_pause = 1'b0;
 
+    // Clear sampled_data queue if already contains data
+    sampled_data.delete();
+
     // Wait for the IDLE cycles to pass
     while(o_xgmii_ctrl == 4'hF)
         @(posedge clk);
@@ -39,6 +42,12 @@ task sample_xgmii_data(output xgmii_stream_t sampled_data[$]);
         sampled_data.push_back(xgmii);
         @(posedge clk);
     end
+
+    // Sample the final output word
+    xgmii.xgmii_data = o_xgmii_txd;
+    xgmii.xgmii_ctrl = o_xgmii_ctrl;
+    xgmii.xgmii_valid = o_xgmii_valid;
+    sampled_data.push_back(xgmii);
 
     @(posedge clk);
 

@@ -160,7 +160,7 @@ always_ff @(posedge i_clk) begin
 
                 term_set <= 1'b0;     
                 ifg_cntr <= '0;                 
-                sof <= 1'b1;
+                sof <= 1'b1;                
 
                 if(s_axis_tvalid) begin
                     data_pipe <= {ETH_SFD, {6{ETH_HDR}}, XGMII_START};
@@ -244,7 +244,8 @@ always_ff @(posedge i_clk) begin
                         
                 end
 
-                xgmii_valid_pipe <= {4'hF, xgmii_valid_pipe[8 -: 4]};                
+                xgmii_valid_pipe <= {4'hF, xgmii_valid_pipe[8 -: 4]};       
+                data_cntr <= '0;         
             end
         endcase
     end

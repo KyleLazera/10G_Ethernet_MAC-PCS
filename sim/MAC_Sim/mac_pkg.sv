@@ -35,6 +35,7 @@ package mac_pkg;
 
         for(int i = 0; i < num_words; i++) begin
             tx_packet.axis_tdata = $random;
+            tx_packet.axis_tlast = 1'b0;
             tx_packet.axis_tkeep = 4'hF;
             tx_packet.axis_tvalid = 1'b1;
 
@@ -61,7 +62,7 @@ package mac_pkg;
 
     endfunction : generate_tx_data_stream
 
-    function void tx_mac_ref_model(
+    function automatic void tx_mac_ref_model(
         axi_stream_t axi_data[$], 
         logic [CRC_WIDTH-1:0] lut [3:0][255:0],
         ref xgmii_stream_t xgmii [$]    
@@ -86,7 +87,8 @@ package mac_pkg;
         axi_stream_t                axi_pkt;  
         crc_word_t                  axi_data_crc[$];  
         int                         data_cntr = 0;
-        int                         terminate_set = 0;
+
+        xgmii.delete();   
 
         while(state != COMPLETE) begin
 
@@ -96,8 +98,6 @@ package mac_pkg;
                     data_shift_reg = {8'hD5, {6{8'h55}}, 8'hFB};
                     ctrl_shift_reg = 8'b00000001;
                     state = DATA;
-
-                    xgmii.push_back('{xgmii_data: data_shift_reg[31:0], xgmii_ctrl: ctrl_shift_reg[3:0], xgmii_valid: 1'b1});
                 end
                 DATA: begin
                     axi_pkt = axi_data.pop_back();
@@ -105,7 +105,7 @@ package mac_pkg;
                     // Wehn recieveing the last work, if we have not recieved the minimum number of bytes (60 bytes)
                     // and tkeep != 4'b1111, we need to add padding. Therefore, we need to adjust the tkeep by changing
                     // any 0 bits to 1's
-                    if (axi_pkt.axis_tlast && axi_pkt.axis_tkeep != 4'hF && data_cntr <= 14)
+                    if (axi_pkt.axis_tlast && axi_pkt.axis_tkeep != 4'hF && data_cntr < 14)
                         decoded_tkeep = 4'hF;
                     else
                         decoded_tkeep = axi_pkt.axis_tkeep;
@@ -133,7 +133,6 @@ package mac_pkg;
 
                     data_cntr++;
 
-                    xgmii.push_back('{xgmii_data: data_shift_reg[31:0], xgmii_ctrl: ctrl_shift_reg[3:0], xgmii_valid: 1'b1});
                 end
                 PADDING: begin
                     // Add padding to the data word as well as tot eh CRC calculation
@@ -146,15 +145,10 @@ package mac_pkg;
                     end
 
                     data_cntr++;        
-
-                    xgmii.push_back('{xgmii_data: data_shift_reg[31:0], xgmii_ctrl: ctrl_shift_reg[3:0], xgmii_valid: 1'b1});           
+       
                 end
                 CRC: begin
                     crc = crc32_slicing_by_4(axi_data_crc, lut);
-                    
-                    $display("CRC: %0h", crc);
-                    $display("Data Register: %0h", data_shift_reg);
-                    $display("Ctrl Register: %8b", ctrl_shift_reg);
 
                     case(~ctrl_shift_reg[(2*CTRL_WIDTH)-1:CTRL_WIDTH])
                         4'b0001: begin
@@ -177,12 +171,7 @@ package mac_pkg;
                             ctrl_shift_reg = {4'b0, ctrl_shift_reg[(2*CTRL_WIDTH)-1 -: 4]};
                             state = TERMINATE;
                         end
-                    endcase
-
-                    $display("Data Register: %0h", data_shift_reg);
-                    $display("Ctrl Register: %0h", ctrl_shift_reg);     
-
-                    xgmii.push_back('{xgmii_data: data_shift_reg[31:0], xgmii_ctrl: ctrl_shift_reg[3:0], xgmii_valid: 1'b1});               
+                    endcase                                       
                     
                 end
                 TERMINATE : begin
@@ -195,9 +184,10 @@ package mac_pkg;
                     ctrl_shift_reg = {4'b1111, ctrl_shift_reg[(2*CTRL_WIDTH)-1 -: 4]};
 
                     state = COMPLETE;
-                end
-
+                end                
             endcase            
+
+            xgmii.push_back('{xgmii_data: data_shift_reg[31:0], xgmii_ctrl: ctrl_shift_reg[3:0], xgmii_valid: 1'b1});
         end
 
     endfunction : tx_mac_ref_model

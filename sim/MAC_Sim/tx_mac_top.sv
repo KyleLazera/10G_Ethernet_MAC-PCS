@@ -36,7 +36,7 @@ module tx_mac_top;
     mac_coverage coverage = new();
 
     /* Queues */
-    xgmii_stream_t xgmii_ref_data [$], xgmii_actual_data[$], xgmii_new_ref[$];
+    xgmii_stream_t xgmii_ref_data [$], xgmii_actual_data[$];
 
     /* DUT */
     tx_mac #(
@@ -90,26 +90,17 @@ module tx_mac_top;
         reset_n <= 1'b1;
         @(posedge clk);
 
+        repeat(2) begin
         //while(!coverage.coverage_complete) begin
 
             // Generate data to transmit to DUT & Add num of bytes to coverage
             num_bytes = generate_tx_data_stream(tx_mac_data_queue);
-            //coverage.add_sample(num_bytes);
+            coverage.add_sample(num_bytes);
 
-            // Pass data through golden model to get reference output
-            tx_mac_golden_model(tx_mac_data_queue, lut, xgmii_ref_data);
-            tx_mac_ref_model(tx_mac_data_queue, lut, xgmii_new_ref);
+            tx_mac_ref_model(tx_mac_data_queue, lut, xgmii_ref_data);
 
-            if (xgmii_new_ref.size() != xgmii_ref_data.size()) begin
-                $display("Reference Model Size Mismatch! New Model Size: %0d != Golden Model Size: %0d", xgmii_new_ref.size(), xgmii_ref_data.size());
-            end
-
-            foreach(xgmii_new_ref[i]) begin
-                if (xgmii_new_ref[i].xgmii_data == xgmii_ref_data[i].xgmii_data)
-                    $display("%0h == %0h", xgmii_new_ref[i].xgmii_data, xgmii_ref_data[i].xgmii_data);
-                else
-                    $display("%0h != %0h", xgmii_new_ref[i].xgmii_data, xgmii_ref_data[i].xgmii_data);
-            end
+            foreach(xgmii_ref_data[i])
+                $display("Ref Data: %0h", xgmii_ref_data[i].xgmii_data);
 
             // Drive data to DUT and sample output from DUT
             fork
@@ -124,7 +115,7 @@ module tx_mac_top;
             // Verify Data output against reference model
             scb.verify_data(xgmii_ref_data, xgmii_actual_data);
 
-        //end
+        end
 
         #1000;        
         scb.print_summary();

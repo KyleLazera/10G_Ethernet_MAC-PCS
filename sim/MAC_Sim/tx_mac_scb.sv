@@ -36,6 +36,7 @@ class tx_mac_scb extends scoreboard_base;
     function verify_data(xgmii_stream_t expected_data[$], xgmii_stream_t actual_data[$]);
         
         int actual_data_size, ref_data_size;
+        xgmii_stream_t actual_pkt, ref_pkt;
 
         actual_data_size = actual_data.size();
         ref_data_size = expected_data.size();
@@ -43,15 +44,18 @@ class tx_mac_scb extends scoreboard_base;
         /* Validate Size of Queues */
         if (actual_data_size == ref_data_size) begin
             record_packet_success();
-            foreach(actual_data[i]) begin
-                assert(actual_data[i] == expected_data[i]) begin
+
+            while(actual_data.size()) begin
+                actual_pkt = actual_data.pop_front();
+                ref_pkt = expected_data.pop_front();
+    
+                assert(actual_pkt == ref_pkt) begin
                     record_success();
                 end else begin
-                    $fatal("Data Mismatch on word %0d", i);
                     record_failure();
-                    $display("XGMII Actual Data: %0h, XGMII Expected Data: %0h", actual_data[i].xgmii_data, expected_data[i].xgmii_data);
-                    $display("XGMII Actual Control: %0h XGMII Expected Control: %0h", actual_data[i].xgmii_ctrl, expected_data[i].xgmii_ctrl);
-                    $display("XGMII Actual Valid: %0b XGMII Expected Valid: %0b", actual_data[i].xgmii_valid, expected_data[i].xgmii_valid);
+                    $display("XGMII Actual Data: %0h, XGMII Expected Data: %0h", actual_pkt.xgmii_data, ref_pkt.xgmii_data);
+                    $display("XGMII Actual Control: %0h XGMII Expected Control: %0h", actual_pkt.xgmii_ctrl, ref_pkt.xgmii_ctrl);
+                    $display("XGMII Actual Valid: %0b XGMII Expected Valid: %0b", actual_pkt.xgmii_valid, ref_pkt.xgmii_valid);
                 end
             end
         end else begin
