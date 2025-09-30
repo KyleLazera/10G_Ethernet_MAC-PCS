@@ -28,8 +28,7 @@ package mac_pkg;
         axi_stream_t tx_packet;
         int num_bytes, num_words, remainder_bytes;
 
-        //TODO: Randomize this value
-        num_bytes = 56;
+        num_bytes = $urandom_range(30, 1500);
         num_words = num_bytes/4;
         remainder_bytes = num_bytes % 4;
 
@@ -86,7 +85,7 @@ package mac_pkg;
         logic [CTRL_WIDTH-1:0]      decoded_tkeep;
         axi_stream_t                axi_pkt;  
         crc_word_t                  axi_data_crc[$];  
-        int                         data_cntr = 0;
+        int                         data_cntr = 0, ifg_cntr = 0;;
 
         xgmii.delete();   
 
@@ -105,7 +104,7 @@ package mac_pkg;
                     // Wehn recieveing the last work, if we have not recieved the minimum number of bytes (60 bytes)
                     // and tkeep != 4'b1111, we need to add padding. Therefore, we need to adjust the tkeep by changing
                     // any 0 bits to 1's
-                    if (axi_pkt.axis_tlast && axi_pkt.axis_tkeep != 4'hF && data_cntr < 14)
+                    if (axi_pkt.axis_tlast && axi_pkt.axis_tkeep != 4'hF && data_cntr <= 14)
                         decoded_tkeep = 4'hF;
                     else
                         decoded_tkeep = axi_pkt.axis_tkeep;
@@ -153,17 +152,17 @@ package mac_pkg;
                     case(~ctrl_shift_reg[(2*CTRL_WIDTH)-1:CTRL_WIDTH])
                         4'b0001: begin
                             data_shift_reg = {{2{8'h07}}, 8'hFD, crc, data_shift_reg[39 -: 8]};
-                            ctrl_shift_reg = {3'b111, 1'b0, ctrl_shift_reg[(2*CTRL_WIDTH)-1 -: 4]};
+                            ctrl_shift_reg = {3'b111, 4'b0, ctrl_shift_reg[4 -: 1]};
                             state = IFG;
                         end
                         4'b0011: begin
                             data_shift_reg = {{1{8'h07}}, 8'hFD, crc, data_shift_reg[47 -: 16]};
-                            ctrl_shift_reg = {2'b11, 2'b0, ctrl_shift_reg[(2*CTRL_WIDTH)-1 -: 4]};
+                            ctrl_shift_reg = {2'b11, 4'b0, ctrl_shift_reg[5 -: 2]};
                             state = IFG;
                         end
                         4'b0111: begin
                             data_shift_reg = {8'hFD, crc, data_shift_reg[55 -: 24]};
-                            ctrl_shift_reg = {1'b1, 3'b0, ctrl_shift_reg[(2*CTRL_WIDTH)-1 -: 4]};
+                            ctrl_shift_reg = {1'b1, 4'b0, ctrl_shift_reg[6 -: 3]};
                             state = IFG;
                         end
                         4'b1111: begin
@@ -175,15 +174,25 @@ package mac_pkg;
                     
                 end
                 TERMINATE : begin
-                    data_shift_reg = {{3{8'h07}}, 8'hFD, data_shift_reg[(2*DATA_WIDTH)-1 -: DATA_WIDTH]};
-                    ctrl_shift_reg = {4'b1111, ctrl_shift_reg[(2*CTRL_WIDTH)-1 -: 4]};  
-                    state = IFG;
+                    if (ifg_cntr == 0) begin
+                        data_shift_reg = {{3{8'h07}}, 8'hFD, data_shift_reg[(2*DATA_WIDTH)-1 -: DATA_WIDTH]};
+                        ctrl_shift_reg = {4'b1111, ctrl_shift_reg[(2*CTRL_WIDTH)-1 -: 4]};  
+                    end else begin
+                        data_shift_reg = {{4{8'h07}}, data_shift_reg[(2*DATA_WIDTH)-1 -: DATA_WIDTH]};
+                        ctrl_shift_reg = {4'b1111, ctrl_shift_reg[(2*CTRL_WIDTH)-1 -: 4]};
+                    end
+                    ifg_cntr++;
+
+                    if (ifg_cntr == 2)
+                        state = COMPLETE;
                 end
                 IFG: begin
                     data_shift_reg = {{4{8'h07}}, data_shift_reg[(2*DATA_WIDTH)-1 -: DATA_WIDTH]};
                     ctrl_shift_reg = {4'b1111, ctrl_shift_reg[(2*CTRL_WIDTH)-1 -: 4]};
+                    ifg_cntr++;
 
-                    state = COMPLETE;
+                    if (ifg_cntr == 2)
+                        state = COMPLETE;
                 end                
             endcase            
 

@@ -90,17 +90,14 @@ module tx_mac_top;
         reset_n <= 1'b1;
         @(posedge clk);
 
-        repeat(2) begin
-        //while(!coverage.coverage_complete) begin
+        //repeat(2) begin
+        while(!coverage.coverage_complete) begin
 
             // Generate data to transmit to DUT & Add num of bytes to coverage
             num_bytes = generate_tx_data_stream(tx_mac_data_queue);
             coverage.add_sample(num_bytes);
 
             tx_mac_ref_model(tx_mac_data_queue, lut, xgmii_ref_data);
-
-            foreach(xgmii_ref_data[i])
-                $display("Ref Data: %0h", xgmii_ref_data[i].xgmii_data);
 
             // Drive data to DUT and sample output from DUT
             fork
