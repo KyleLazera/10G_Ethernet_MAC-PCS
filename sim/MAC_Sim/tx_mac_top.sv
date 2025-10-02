@@ -34,6 +34,7 @@ module tx_mac_top;
     /* Scoreboard */
     tx_mac_scb scb = new();
     mac_coverage coverage = new();
+    xgmii_obj xgmii_rand_obj = new();
 
     /* Queues */
     xgmii_stream_t xgmii_ref_data [$], xgmii_actual_data[$];
@@ -80,7 +81,10 @@ module tx_mac_top;
         int num_bytes;
 
         xgmii_if.init_xgmii();
-        axi_if.init_axi_stream();
+        axi_if.init_axi_stream();        
+
+        // Assign XGMII object to interface
+        xgmii_if.xgmii_obj_t = xgmii_rand_obj;
 
         // Assert both resets initially
         reset_n = 1'b0;
@@ -90,7 +94,6 @@ module tx_mac_top;
         reset_n <= 1'b1;
         @(posedge clk);
 
-        //repeat(2) begin
         while(!coverage.coverage_complete) begin
 
             // Generate data to transmit to DUT & Add num of bytes to coverage

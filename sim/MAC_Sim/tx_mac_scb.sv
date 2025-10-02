@@ -48,7 +48,7 @@ class tx_mac_scb extends scoreboard_base;
             while(actual_data.size()) begin
                 actual_pkt = actual_data.pop_front();
                 ref_pkt = expected_data.pop_front();
-    
+
                 assert(actual_pkt == ref_pkt) begin
                     record_success();
                 end else begin
@@ -56,11 +56,22 @@ class tx_mac_scb extends scoreboard_base;
                     $display("XGMII Actual Data: %0h, XGMII Expected Data: %0h", actual_pkt.xgmii_data, ref_pkt.xgmii_data);
                     $display("XGMII Actual Control: %0h XGMII Expected Control: %0h", actual_pkt.xgmii_ctrl, ref_pkt.xgmii_ctrl);
                     $display("XGMII Actual Valid: %0b XGMII Expected Valid: %0b", actual_pkt.xgmii_valid, ref_pkt.xgmii_valid);
+                    $stop;
                 end
             end
         end else begin
-            $display("Expected Packet Size: %0d != Actual Packet Size: %0d", ref_data_size, actual_data_size);
+
+            $display("Expected Packet Size: %0d != Actual Packet Size: %0d", ref_data_size, actual_data_size); 
+
+            if (actual_data_size >= ref_data_size)
+                foreach(actual_data[i])
+                    $display("Actual Data: %0h, Ref Data: %0h", actual_data[i].xgmii_data, expected_data[i].xgmii_data);
+            else
+                foreach(expected_data[i])
+                    $display("Actual Data: %0h, Ref Data: %0h", actual_data[i].xgmii_data, expected_data[i].xgmii_data);
+                       
             record_packet_failure();
+            $stop;
         end
         
     endfunction : verify_data

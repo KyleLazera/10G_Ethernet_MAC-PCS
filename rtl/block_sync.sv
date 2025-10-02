@@ -27,24 +27,20 @@
 // EXAMPLE OF MISALIGNMENT:
 //
 // Step 1: Receive first 32-bit word (i_data_0):
-//   This is NOT a full 66-bit block — it's just the first part.
+//   This block will contain {Data[29:0], Hdr}.
 //
 // Step 2: Receive second 32-bit word (i_data_1):
-//   Now we have 64 bits in total, but still missing the last 2 bits for a complete block.
+//   This block will contain {Data[61:30]}, but we are still missing the last 2 bits for a complete block.
 //
 // Step 3: Receive third 32-bit word (i_data_2):
-//   The first 2 bits of i_data_2 belong to the END of the first 66-bit block.
-//   The remaining 30 bits of i_data_2 will be the start of the NEXT 66-bit block.
+//   The first 2 bits of i_data_2 contain Data[63:62] from the first 66-bit block.
+//   The remaining 30 bits of i_data_2 will contain {Data[27:0], Hdr} of the NEXT 66-bit block.
 //
 // So the first complete block is assembled as:
 //   { i_data_2[1:0], i_data_1, i_data_0 }
 //
 // The next complete block will be made from:
 //   { i_data_4[3:0], i_data_3, i_data_2[31:2] }
-//
-// Why?
-// - First 2 bits of i_data_2 already went to the previous block
-// - The remaining bits of i_data_2 and the next words get shifted accordingly
 //
 // Next block after that:
 //   { i_data_6[5:0], i_data_5, i_data_4[31:4] }
