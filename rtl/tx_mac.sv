@@ -118,8 +118,6 @@ crc32#(
     .o_crc_state(crc_state_next)
 );
 
-
-
 /* ---------------- State Machine Logic ---------------- */ 
 state_t                             state_reg = IDLE;
 logic [4:0]                         ifg_cntr = '0;
@@ -168,7 +166,9 @@ always_ff @(posedge i_clk) begin
                 ifg_cntr <= '0;                 
                 sof <= 1'b1;                
 
-                // Once s_axis_tvalid goes high, we begin sending the preamble and SFD
+                // We can populate the data pipe with the preamble and SFD once the s_tx_valid
+                // is high (master has data to send) and xgmii_valid pipe is high (we are
+                // not in a paused state)
                 if(s_axis_tvalid && xgmii_valid_pipe[1]) begin
                     data_pipe <= {ETH_SFD, {6{ETH_HDR}}, XGMII_START};
                     ctrl_pipe <= 8'h01;
@@ -186,6 +186,9 @@ always_ff @(posedge i_clk) begin
 
                 if (s_axis_tlast) begin
                     s_axis_trdy_reg <= 1'b0;
+                    // Before transitioning to the next state, we want to latch how many bytes
+                    // are valid in the last data word. This is used to determine where to insert
+                    // the CRC & terminate or padding bytes.
                     valid_bytes <= decoded_axi_tkeep;
                     state_reg <= (data_cntr < (MIN_NUM_WORDS-1)) ? PADDING : CRC;
                 end
@@ -194,55 +197,52 @@ always_ff @(posedge i_clk) begin
                     data_cntr <= data_cntr + 1;
             end
             PADDING: begin
-                if (o_xgmii_valid) begin
                 data_pipe <= {decoded_xgmii_data, data_pipe[(2*XGMII_DATA_WIDTH)-1 -: 32]};
                 ctrl_pipe <= {4'h0, ctrl_pipe[(2*XGMII_CTRL_WIDTH)-1 -: 4]};
-                
 
                 if (data_cntr >= (MIN_NUM_WORDS-1))
                     state_reg <= CRC;
-                else 
+                else if (o_xgmii_valid)
                     data_cntr <= data_cntr + 1;
-                end
             end
             CRC: begin
                 if (o_xgmii_valid) begin
-                if (valid_bytes == 4'b0001) begin
-                    data_pipe <= {{2{XGMII_IDLE}}, XGMII_TERM, crc_data_out, data_pipe[39 -: 8]};
-                    ctrl_pipe <= {3'b111, 1'b0, ctrl_pipe[(2*XGMII_CTRL_WIDTH)-1 -: 4]};
-                    term_set <= 1'b1;
-                end else if (valid_bytes == 4'b0011) begin
-                    data_pipe <= {{1{XGMII_IDLE}}, XGMII_TERM, crc_data_out, data_pipe[47 -: 16]};
-                    ctrl_pipe <= {2'b11, 2'b0, ctrl_pipe[(2*XGMII_CTRL_WIDTH)-1 -: 4]};
-                    term_set <= 1'b1;
-                end else if (valid_bytes == 4'b0111) begin
-                    data_pipe <= {XGMII_TERM, crc_data_out, data_pipe[55 -: 24]};
-                    ctrl_pipe <= {1'b1, 3'b0, ctrl_pipe[(2*XGMII_CTRL_WIDTH)-1 -: 4]};
-                    term_set <= 1'b1;
-                end else  begin
-                    data_pipe <= {crc_data_out, data_pipe[(2*XGMII_DATA_WIDTH)-1 -: 32]};
-                    ctrl_pipe <= {4'b0, ctrl_pipe[(2*XGMII_CTRL_WIDTH)-1 -: 4]};
-                end
+                    if (valid_bytes == 4'b0001) begin
+                        data_pipe <= {{2{XGMII_IDLE}}, XGMII_TERM, crc_data_out, data_pipe[39 -: 8]};
+                        ctrl_pipe <= {3'b111, 1'b0, ctrl_pipe[(2*XGMII_CTRL_WIDTH)-1 -: 4]};
+                        term_set <= 1'b1;
+                    end else if (valid_bytes == 4'b0011) begin
+                        data_pipe <= {{1{XGMII_IDLE}}, XGMII_TERM, crc_data_out, data_pipe[47 -: 16]};
+                        ctrl_pipe <= {2'b11, 2'b0, ctrl_pipe[(2*XGMII_CTRL_WIDTH)-1 -: 4]};
+                        term_set <= 1'b1;
+                    end else if (valid_bytes == 4'b0111) begin
+                        data_pipe <= {XGMII_TERM, crc_data_out, data_pipe[55 -: 24]};
+                        ctrl_pipe <= {1'b1, 3'b0, ctrl_pipe[(2*XGMII_CTRL_WIDTH)-1 -: 4]};
+                        term_set <= 1'b1;
+                    end else  begin
+                        data_pipe <= {crc_data_out, data_pipe[(2*XGMII_DATA_WIDTH)-1 -: 32]};
+                        ctrl_pipe <= {4'b0, ctrl_pipe[(2*XGMII_CTRL_WIDTH)-1 -: 4]};
+                    end
 
-                state_reg <= IFG;
+                    state_reg <= IFG;
                 end
 
             end
             IFG: begin
                 if (o_xgmii_valid) begin
-                if (!term_set) begin
-                    data_pipe <= {{{3{XGMII_IDLE}}, XGMII_TERM}, data_pipe[(2*XGMII_DATA_WIDTH)-1 -: 32]};
-                    ctrl_pipe <= {4'b1111, ctrl_pipe[(2*XGMII_CTRL_WIDTH)-1 -: 4]};
-                    term_set <= 1'b1;
-                end else begin
-                    if (ifg_cntr < 2) begin
-                        data_pipe <= {{4{XGMII_IDLE}}, data_pipe[(2*XGMII_DATA_WIDTH)-1 -: 32]};
+                    if (!term_set) begin
+                        data_pipe <= {{{3{XGMII_IDLE}}, XGMII_TERM}, data_pipe[(2*XGMII_DATA_WIDTH)-1 -: 32]};
                         ctrl_pipe <= {4'b1111, ctrl_pipe[(2*XGMII_CTRL_WIDTH)-1 -: 4]};
-                        ifg_cntr <= ifg_cntr + 1;
-                    end else
-                        state_reg <= IDLE;
-                        
-                end
+                        term_set <= 1'b1;
+                    end else begin
+                        if (ifg_cntr < 2) begin
+                            data_pipe <= {{4{XGMII_IDLE}}, data_pipe[(2*XGMII_DATA_WIDTH)-1 -: 32]};
+                            ctrl_pipe <= {4'b1111, ctrl_pipe[(2*XGMII_CTRL_WIDTH)-1 -: 4]};
+                            ifg_cntr <= ifg_cntr + 1;
+                        end else
+                            state_reg <= IDLE;
+
+                    end
       
                 data_cntr <= '0;    
                 end     

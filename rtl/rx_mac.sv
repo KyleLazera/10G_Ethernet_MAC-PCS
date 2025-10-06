@@ -1,0 +1,190 @@
+
+module rx_mac#(
+    parameter XGMII_DATA_WIDTH = 32,
+    parameter O_DATA_WIDTH = 32,
+
+    /* DO NOT MODIFY */
+    parameter XGMII_CTRL_WIDTH = XGMII_DATA_WIDTH/8,
+    parameter O_DATA_KEEP_WIDTH = O_DATA_WIDTH/8
+)(
+    input logic   i_clk,
+    input logic   i_reset_n,
+
+    // XGMII INput Interface
+    input logic [XGMII_DATA_WIDTH-1:0]      i_xgmii_data,
+    input logic [XGMII_CTRL_WIDTH-1:0]      i_xgmii_ctrl,
+    input logic                             i_xgmii_valid,
+
+    // AXI-Stream Interface
+    output logic [O_DATA_WIDTH-1:0]         o_data,
+    output logic [O_DATA_KEEP_WIDTH-1:0]    o_data_keep,
+    output logic                            o_data_valid,
+    output logic                            o_data_err
+);
+
+localparam ETH_START = {8'hD5, {6{8'h55}}, 8'hFB};
+localparam MIN_NUM_WORDS = 15;          
+localparam CNTR_WIDTH = $clog2(MIN_NUM_WORDS);
+localparam CRC_WIDTH = 32;
+
+typedef enum logic [1:0] {
+    IDLE,
+    DATA,
+    CRC
+} state_t;
+
+/* ---------------- Pipeline Input Data ---------------- */
+
+logic [(3*XGMII_DATA_WIDTH)-1:0]     xgmii_data_pipe = '0;
+logic [(3*XGMII_CTRL_WIDTH)-1:0]     xgmii_ctrl_pipe = '0;
+logic [2:0]                          xgmii_valid_pipe = '0;
+
+always_ff @(posedge i_clk) begin
+    xgmii_data_pipe <= {i_xgmii_data, xgmii_data_pipe[(3*XGMII_DATA_WIDTH)-1 : XGMII_DATA_WIDTH]};
+    xgmii_ctrl_pipe <= {i_xgmii_ctrl, xgmii_ctrl_pipe[(3*XGMII_CTRL_WIDTH)-1 : XGMII_CTRL_WIDTH]};
+    xgmii_valid_pipe <= {i_xgmii_valid, xgmii_valid_pipe[2:1]};
+end
+
+/* ---------------- State Machine Decoding Logic ---------------- */
+
+state_t                         state_reg = IDLE;
+logic [O_DATA_WIDTH-1:0]        o_data_reg = {O_DATA_WIDTH{1'b0}};
+logic [O_DATA_KEEP_WIDTH-1:0]   o_data_keep_reg = {O_DATA_KEEP_WIDTH{1'b0}};
+logic [O_DATA_WIDTH-1:0]        o_data_temp_reg = '0;
+logic                           o_data_valid_reg = 1'b0;
+logic                           o_data_err_reg = 1'b0;
+logic [CNTR_WIDTH-1:0]          data_cntr = '0;
+logic                           start_condition;
+logic                           stop_condition;
+logic                           terminate_pos[3:0];
+logic                           terminate_pos_reg[3:0];
+
+// Combinational Flags
+assign start_condition = (xgmii_data_pipe[(2*XGMII_DATA_WIDTH)-1:0] == ETH_START) && (xgmii_ctrl_pipe[(2*XGMII_CTRL_WIDTH)-1:0] == 8'h1) && (xgmii_valid_pipe == 3'b111);
+assign stop_condition = |xgmii_ctrl_pipe[(3*XGMII_CTRL_WIDTH)-1 -: XGMII_CTRL_WIDTH];
+
+always_comb begin
+    for(int i = 0; i < 4; i++) 
+        terminate_pos[i] = (xgmii_data_pipe[(2*XGMII_DATA_WIDTH)+(i*8) +: 8] == 8'hFD) && xgmii_ctrl_pipe[(2*XGMII_CTRL_WIDTH)+i];
+end
+
+always_ff @(posedge i_clk)
+    for(int i = 0; i < 4; i++)
+        terminate_pos_reg[i] <= terminate_pos[i];
+
+
+always_ff@(posedge i_clk) begin
+    if (!i_reset_n) begin
+        state_reg <= IDLE;
+        data_cntr <= '0;
+        o_data_valid_reg <= 1'b0;
+        o_data_err_reg <= 1'b0;
+        sof <= 1'b0;
+    end else begin
+
+        sof <= 1'b0;
+
+        o_data_reg <= xgmii_data_pipe[(2*XGMII_DATA_WIDTH)-1 -: O_DATA_WIDTH];
+        o_data_keep_reg <= {O_DATA_KEEP_WIDTH{1'b0}};
+        o_data_valid_reg <= xgmii_valid_pipe[1];
+
+        case(state_reg)
+            IDLE: begin
+
+                o_data_err_reg <= 1'b0;
+                
+                if (start_condition) begin
+                    sof <= 1'b1;
+                    state_reg <= DATA;
+                end
+            end
+            DATA: begin
+
+                o_data_keep_reg <= ~xgmii_ctrl_pipe[(2*XGMII_CTRL_WIDTH)-1 -: O_DATA_KEEP_WIDTH];
+
+                if (terminate_pos[0])
+                    o_data_keep_reg <= {O_DATA_KEEP_WIDTH{1'b0}};
+                
+                if (terminate_pos[1])
+                    o_data_keep_reg <= {{(O_DATA_KEEP_WIDTH-1){1'b0}}, 1'b1};
+
+                if (terminate_pos[2])
+                    o_data_keep_reg <= {{(O_DATA_KEEP_WIDTH-2){1'b0}}, 2'b11};
+
+                if (terminate_pos[3])
+                    o_data_keep_reg <= {{(O_DATA_KEEP_WIDTH-3){1'b0}}, 3'b111};
+                
+                if (xgmii_valid_pipe[1] && (data_cntr < (MIN_NUM_WORDS - 1)))
+                    data_cntr <= data_cntr + 1;
+
+                if (stop_condition) begin
+                    if (data_cntr < (MIN_NUM_WORDS - 1)) begin
+                        o_data_err_reg <= 1'b1;
+                        state_reg <= IDLE;
+                    end else begin
+                        // In the case where the packet is perfectly aligned with 32-bits, we need
+                        // to store the final output word since this will hold the CRC value
+                        o_data_temp_reg <= o_data_reg[O_DATA_WIDTH-1:0];
+                        state_reg <= CRC;
+                    end
+
+                end
+            end
+            CRC: begin
+                if (terminate_pos_reg[0])
+                    o_data_err_reg <= (xgmii_data_pipe[XGMII_DATA_WIDTH-1 -: XGMII_DATA_WIDTH] != crc_data_out);
+                
+                if (terminate_pos_reg[1])
+                    o_data_err_reg <= (xgmii_data_pipe[(XGMII_DATA_WIDTH + 8)-1 -: XGMII_DATA_WIDTH] != crc_data_out);
+
+                if (terminate_pos_reg[2])
+                    o_data_err_reg <= (xgmii_data_pipe[(XGMII_DATA_WIDTH + 16)-1 -: XGMII_DATA_WIDTH] != crc_data_out);
+
+                if (terminate_pos_reg[3])
+                    o_data_err_reg <= (xgmii_data_pipe[(XGMII_DATA_WIDTH + 24)-1 -: XGMII_DATA_WIDTH] != crc_data_out);
+
+                state_reg <= IDLE;
+            end
+        endcase
+    end
+end
+
+/* ---------------- CRC Logic ---------------- */
+
+logic                           sof = 1'b0;
+logic [CRC_WIDTH-1:0]           crc_state = 32'hFFFFFFFF;
+logic [XGMII_DATA_WIDTH-1:0]    crc_data_out, crc_data_in;
+logic [CRC_WIDTH-1:0]           crc_state_next;
+logic [O_DATA_KEEP_WIDTH-1:0]   crc_data_valid;
+
+always_ff@(posedge i_clk) begin
+    if (!i_reset_n | sof) begin
+        crc_state <= 32'hFFFFFFFF;
+    end else if (|o_data_keep_reg) begin
+        crc_state <= crc_state_next;
+    end
+end
+
+crc32#(
+    .DATA_WIDTH(XGMII_DATA_WIDTH),
+    .CRC_WIDTH(CRC_WIDTH)
+) CRC_Slicing_by_4 (
+    .i_clk(i_clk),
+    .i_data(crc_data_in),
+    .i_crc_state(crc_state),
+    .i_data_valid(crc_data_valid),
+    .o_crc(crc_data_out),
+    .o_crc_state(crc_state_next)
+);
+
+assign crc_data_in = o_data_reg;
+assign crc_data_valid = o_data_keep_reg;
+
+/* ---------------- Output Logic ---------------- */
+
+assign o_data = o_data_reg;
+assign o_data_keep = o_data_keep_reg;
+assign o_data_valid = o_data_valid_reg;
+assign o_data_err = o_data_err_reg;
+
+endmodule
