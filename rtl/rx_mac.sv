@@ -45,6 +45,27 @@ always_ff @(posedge i_clk) begin
     xgmii_valid_pipe <= {i_xgmii_valid, xgmii_valid_pipe[2:1]};
 end
 
+/* ---------------- Decoding Data Logic ---------------- */
+
+logic                           start_condition;
+logic                           stop_condition;
+logic                           terminate_pos[3:0];
+logic                           terminate_pos_reg[3:0];
+
+// Combintational Decoding Flags
+assign start_condition = (xgmii_data_pipe[(2*XGMII_DATA_WIDTH)-1:0] == ETH_START) && (xgmii_ctrl_pipe[(2*XGMII_CTRL_WIDTH)-1:0] == 8'h1) && (xgmii_valid_pipe == 3'b111);
+assign stop_condition = |xgmii_ctrl_pipe[(3*XGMII_CTRL_WIDTH)-1 -: XGMII_CTRL_WIDTH];
+
+always_comb begin
+    for(int i = 0; i < 4; i++) 
+        terminate_pos[i] = (xgmii_data_pipe[(2*XGMII_DATA_WIDTH)+(i*8) +: 8] == 8'hFD) && xgmii_ctrl_pipe[(2*XGMII_CTRL_WIDTH)+i];
+end
+
+// Terminate Flag Pipeline
+always_ff @(posedge i_clk)
+    for(int i = 0; i < 4; i++)
+        terminate_pos_reg[i] <= terminate_pos[i];
+
 /* ---------------- State Machine Decoding Logic ---------------- */
 
 state_t                         state_reg = IDLE;
@@ -54,23 +75,6 @@ logic [O_DATA_WIDTH-1:0]        o_data_temp_reg = '0;
 logic                           o_data_valid_reg = 1'b0;
 logic                           o_data_err_reg = 1'b0;
 logic [CNTR_WIDTH-1:0]          data_cntr = '0;
-logic                           start_condition;
-logic                           stop_condition;
-logic                           terminate_pos[3:0];
-logic                           terminate_pos_reg[3:0];
-
-// Combinational Flags
-assign start_condition = (xgmii_data_pipe[(2*XGMII_DATA_WIDTH)-1:0] == ETH_START) && (xgmii_ctrl_pipe[(2*XGMII_CTRL_WIDTH)-1:0] == 8'h1) && (xgmii_valid_pipe == 3'b111);
-assign stop_condition = |xgmii_ctrl_pipe[(3*XGMII_CTRL_WIDTH)-1 -: XGMII_CTRL_WIDTH];
-
-always_comb begin
-    for(int i = 0; i < 4; i++) 
-        terminate_pos[i] = (xgmii_data_pipe[(2*XGMII_DATA_WIDTH)+(i*8) +: 8] == 8'hFD) && xgmii_ctrl_pipe[(2*XGMII_CTRL_WIDTH)+i];
-end
-
-always_ff @(posedge i_clk)
-    for(int i = 0; i < 4; i++)
-        terminate_pos_reg[i] <= terminate_pos[i];
 
 
 always_ff@(posedge i_clk) begin
@@ -122,9 +126,6 @@ always_ff@(posedge i_clk) begin
                         o_data_err_reg <= 1'b1;
                         state_reg <= IDLE;
                     end else begin
-                        // In the case where the packet is perfectly aligned with 32-bits, we need
-                        // to store the final output word since this will hold the CRC value
-                        o_data_temp_reg <= o_data_reg[O_DATA_WIDTH-1:0];
                         state_reg <= CRC;
                     end
 

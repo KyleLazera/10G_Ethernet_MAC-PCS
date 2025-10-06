@@ -1,6 +1,4 @@
-//`include "mac_pkg.sv"
-//`include "axi_stream_if.sv"
-//`include "xgmii_if.sv"
+`include "rx_mac_scb.sv"
 
 module rx_mac_top;
 
@@ -15,12 +13,12 @@ module rx_mac_top;
 
     /* Signals */
 
-    logic i_clk;
-    logic i_reset_n;
-    logic o_data;
-    logic o_data_keep;
-    logic o_data_valid;
-    logic o_data_err;
+    logic                           i_clk;
+    logic                           i_reset_n;
+    logic [O_DATA_WIDTH-1:0]        o_data;
+    logic [O_DATA_KEEP_WIDTH-1:0]   o_data_keep;
+    logic                           o_data_valid;
+    logic                           o_data_err;
 
     /* Interface Declarations */
 
@@ -39,7 +37,8 @@ module rx_mac_top;
         .reset_n(i_reset_n)
     );
 
-    xgmii_obj xgmii_rand_obj = new();
+    rx_mac_scb scb = new();
+    axi_stream_t ref_data[$], output_data[$];
 
     /* DUT Loop back ans instantiation*/
     rx_mac #(
@@ -95,20 +94,56 @@ module rx_mac_top;
 
     always #10 i_clk = ~i_clk;
 
+    task sample_rx_data(ref axi_stream_t output_data_q [$]);
+
+        axi_stream_t rx_data;
+
+        // Wait for the tkeep signal to indicate we have data to keep
+        while (o_data_keep == 4'h0)
+            @(posedge i_clk);
+
+        // Sample all words that have at least 1 byte of data to keep
+        while (o_data_keep != 4'h0) begin
+            if (o_data_valid) begin
+                rx_data.axis_tdata = o_data;
+                rx_data.axis_tkeep = o_data_keep;
+                rx_data.axis_tvalid = o_data_valid;
+                output_data_q.push_front(rx_data);
+            end
+            @(posedge i_clk);
+        end
+
+    endtask : sample_rx_data
+
+
     /* Driving Sitmulus */
 
     initial begin
-        //xgmii_if_inst.xgmii_obj_t = xgmii_rand_obj;
-
         xgmii_if_inst.init_xgmii();
 
         // Wait for reset to be asserted again
         @(posedge i_reset_n);
 
-        generate_tx_data_stream(tx_mac_data_queue);
-        axi_if.drive_data_axi_stream(tx_mac_data_queue);
+        repeat(2) begin
+            generate_tx_data_stream(tx_mac_data_queue);
+
+            foreach(tx_mac_data_queue[i])
+                ref_data.push_back(tx_mac_data_queue[i]);
+
+            fork
+                begin
+                    axi_if.drive_data_axi_stream(tx_mac_data_queue);
+                end
+                begin
+                    sample_rx_data(output_data);
+                end
+            join
+
+            scb.verify_data(output_data, ref_data);
+        end
 
         #1000;
+        scb.print_summary();
         $finish;
     end
 
