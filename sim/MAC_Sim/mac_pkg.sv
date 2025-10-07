@@ -28,7 +28,7 @@ package mac_pkg;
         axi_stream_t tx_packet;
         int num_bytes, num_words, remainder_bytes;
 
-        num_bytes = $urandom_range(40, 1500); 
+        num_bytes = $urandom_range(60, 1500); 
         num_words = num_bytes/4;
         remainder_bytes = num_bytes % 4;
 

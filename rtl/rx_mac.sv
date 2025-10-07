@@ -15,7 +15,6 @@ module rx_mac#(
     input logic [XGMII_CTRL_WIDTH-1:0]      i_xgmii_ctrl,
     input logic                             i_xgmii_valid,
 
-    // AXI-Stream Interface
     output logic [O_DATA_WIDTH-1:0]         o_data,
     output logic [O_DATA_KEEP_WIDTH-1:0]    o_data_keep,
     output logic                            o_data_valid,
@@ -66,7 +65,7 @@ always_ff @(posedge i_clk)
     for(int i = 0; i < 4; i++)
         terminate_pos_reg[i] <= terminate_pos[i];
 
-/* ---------------- State Machine Decoding Logic ---------------- */
+/* ---------------- State Machine Logic ---------------- */
 
 state_t                         state_reg = IDLE;
 logic [O_DATA_WIDTH-1:0]        o_data_reg = {O_DATA_WIDTH{1'b0}};

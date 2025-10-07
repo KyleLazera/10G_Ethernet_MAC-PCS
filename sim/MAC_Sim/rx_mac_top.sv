@@ -1,5 +1,7 @@
 `include "rx_mac_scb.sv"
 
+// TODO: Verify o_data_err is raised succesfully on incorret CRC and packet lengths
+
 module rx_mac_top;
 
     import mac_pkg::*;
@@ -115,20 +117,23 @@ module rx_mac_top;
 
     endtask : sample_rx_data
 
-
-    /* Driving Sitmulus */
-
-    initial begin
-        xgmii_if_inst.init_xgmii();
-
-        // Wait for reset to be asserted again
-        @(posedge i_reset_n);
-
-        repeat(2) begin
+    task tc_loopback(int repetitions);
+        
+        repeat(repetitions) begin
             generate_tx_data_stream(tx_mac_data_queue);
 
+            // Make copy of the tx_mac_data_queue since drive_data_axi_stream pops data from queue
             foreach(tx_mac_data_queue[i])
                 ref_data.push_back(tx_mac_data_queue[i]);
+
+            // Ensure we add padding to the reference data 
+            while (ref_data.size() < 15) begin
+                axi_stream_t padding;
+                padding.axis_tdata = 8'h00;
+                padding.axis_tkeep = 4'hF;
+                padding.axis_tvalid = 1'b1;
+                ref_data.push_back(padding);
+            end
 
             fork
                 begin
@@ -141,6 +146,19 @@ module rx_mac_top;
 
             scb.verify_data(output_data, ref_data);
         end
+
+    endtask : tc_loopback
+
+    /* Driving Sitmulus */
+
+    initial begin
+        xgmii_if_inst.init_xgmii();
+
+        // Wait for reset to be asserted again
+        @(posedge i_reset_n);
+
+        // Sanity loop back test -> Loopback form TX MAC to RX MAC
+        tc_loopback(100);
 
         #1000;
         scb.print_summary();

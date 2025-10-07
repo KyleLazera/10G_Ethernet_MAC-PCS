@@ -65,8 +65,10 @@ class rx_mac_scb extends scoreboard_base;
                 isolate_valid_data(ref_pkt, output_pkt);
 
                 assert(ref_pkt.axis_tdata == output_pkt.axis_tdata) begin
-                    $display("MATCH: Output %0h == Ref: %0h", output_pkt.axis_tdata, ref_pkt.axis_tdata);
+                    record_success();
+                    //$display("MATCH: Output %0h == Ref: %0h", output_pkt.axis_tdata, ref_pkt.axis_tdata);
                 end else begin
+                    record_failure();
                     $display("MISMATCH: Output %0h != Ref: %0h", output_pkt.axis_tdata, ref_pkt.axis_tdata);
                 end
             end
