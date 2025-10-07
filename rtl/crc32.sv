@@ -31,10 +31,10 @@ logic [LUT_WIDTH-1:0] lut_3 [LUT_DEPTH-1:0];
 
 
 initial begin
-    $readmemh("table0.txt", lut_0);
-    $readmemh("table1.txt", lut_1);
-    $readmemh("table2.txt", lut_2);
-    $readmemh("table3.txt", lut_3);            
+    $readmemh("../software/table0.txt", lut_0);
+    $readmemh("../software/table1.txt", lut_1);
+    $readmemh("../software/table2.txt", lut_2);
+    $readmemh("../software/table3.txt", lut_3);            
 end
 
 /* -------------- Isolate Input Bytes -------------- */

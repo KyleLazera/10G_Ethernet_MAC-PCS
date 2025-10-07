@@ -7,8 +7,6 @@
  * in parallel.
  */
 
- // TODO: Add support for reamining codes
-
 module xgmii_encoder
 #(
     

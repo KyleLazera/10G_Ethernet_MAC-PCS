@@ -1,10 +1,10 @@
 
-module 10g_eth_top #(
-    parameter DATA_WIDTH,
-    parameter CTRL_WIDTH,
+module eth_10g_top #(
+    parameter DATA_WIDTH = 32,
+    parameter CTRL_WIDTH = DATA_WIDTH/8
 )(
     input logic                     i_tx_clk,
-    input logic                     i_rx_reset_n,
+    input logic                     i_tx_reset_n,
 
     /* TX MAC Interface */
     input logic [DATA_WIDTH-1:0]    s_axis_tdata,
@@ -14,7 +14,7 @@ module 10g_eth_top #(
     output logic                    s_axis_trdy,
 
     /* TX Transceiever Interface */
-    output logic [DATA_WIDTH-1:0]   pcs_tx_gearbox_data
+    output logic [DATA_WIDTH-1:0]   pcs_tx_gearbox_data,
 
     input logic                     i_rx_clk,
     input logic                     i_rx_reset_n,
@@ -23,7 +23,7 @@ module 10g_eth_top #(
     output logic [DATA_WIDTH-1:0]   o_data,
     output logic [CTRL_WIDTH-1:0]   o_data_keep,
     output logic                    o_data_valid,
-    output logic                    o_data_err
+    output logic                    o_data_err,
 
     /* RX Transceiever Interface */
     input logic [DATA_WIDTH-1:0]    pcs_rx_gearbox_data
