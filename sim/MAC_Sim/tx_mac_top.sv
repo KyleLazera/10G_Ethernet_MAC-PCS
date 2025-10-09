@@ -1,6 +1,6 @@
 
-`include "axi_stream_if.sv"
-`include "mac_pkg.sv"
+`include "../Common/axi_stream_if.sv"
+//`include "mac_pkg.sv"
 `include "xgmii_if.sv"
 `include "tx_mac_scb.sv"
 
@@ -42,7 +42,8 @@ module tx_mac_top;
     /* DUT */
     tx_mac #(
         .XGMII_DATA_WIDTH(DATA_WIDTH),
-        .XGMII_CTRL_WIDTH(CTRL_WIDTH)
+        .XGMII_CTRL_WIDTH(CTRL_WIDTH),
+        .SIMULATION(1)
     ) DUT (
         .i_clk(clk),
         .i_reset_n(reset_n),
@@ -54,11 +55,11 @@ module tx_mac_top;
         .i_xgmii_pause(xgmii_if.i_xgmii_pause),
 
         // AXI-Stream Interface
-        .s_axis_tdata(axi_if.s_axis_tdata),
-        .s_axis_tkeep(axi_if.s_axis_tkeep),
-        .s_axis_tvalid(axi_if.s_axis_tvalid),
-        .s_axis_tlast(axi_if.s_axis_tlast),
-        .s_axis_trdy(axi_if.s_axis_trdy)
+        .s_axis_tdata(axi_if.m_axis_tdata),
+        .s_axis_tkeep(axi_if.m_axis_tkeep),
+        .s_axis_tvalid(axi_if.m_axis_tvalid),
+        .s_axis_tlast(axi_if.m_axis_tlast),
+        .s_axis_trdy(axi_if.m_axis_trdy)
     );
 
     /* Clock Instantiation */

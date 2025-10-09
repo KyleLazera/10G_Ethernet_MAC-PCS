@@ -1,6 +1,7 @@
 module mac #(
     parameter DATA_WIDTH = 32,
-    parameter CTRL_WIDTH = DATA_WIDTH/8
+    parameter CTRL_WIDTH = DATA_WIDTH/8,
+    parameter SIMULATION = 0
 ) (
     /* TX MAC Signals */
     input logic                         i_tx_clk,
@@ -27,6 +28,7 @@ module mac #(
 
     output logic [DATA_WIDTH-1:0]       o_data,
     output logic [CTRL_WIDTH-1:0]       o_data_keep,
+    output logic                        o_data_last,
     output logic                        o_data_valid,
     output logic                        o_data_err
 );
@@ -35,7 +37,8 @@ module mac #(
 
 tx_mac #(
     .XGMII_DATA_WIDTH(DATA_WIDTH),
-    .XGMII_CTRL_WIDTH(CTRL_WIDTH)
+    .XGMII_CTRL_WIDTH(CTRL_WIDTH),
+    .SIMULATION(SIMULATION)
 ) tx_mac_module (
     .i_clk(i_tx_clk),
     .i_reset_n(i_tx_reset_n),
@@ -58,7 +61,8 @@ tx_mac #(
 
 rx_mac #(
     .XGMII_DATA_WIDTH(DATA_WIDTH),
-    .O_DATA_WIDTH(DATA_WIDTH)
+    .O_DATA_WIDTH(DATA_WIDTH),
+    .SIMULATION(SIMULATION)
 ) rx_mac_module (
     .i_clk(i_rx_clk),
     .i_reset_n(i_rx_reset_n),
@@ -70,6 +74,7 @@ rx_mac #(
 
     .o_data(o_data),
     .o_data_keep(o_data_keep),
+    .o_data_last(o_data_last),
     .o_data_valid(o_data_valid),
     .o_data_err(o_data_err)
 );

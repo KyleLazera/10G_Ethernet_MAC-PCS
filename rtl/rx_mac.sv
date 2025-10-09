@@ -2,6 +2,7 @@
 module rx_mac#(
     parameter XGMII_DATA_WIDTH = 32,
     parameter O_DATA_WIDTH = 32,
+    parameter SIMULATION = 0,
 
     /* DO NOT MODIFY */
     parameter XGMII_CTRL_WIDTH = XGMII_DATA_WIDTH/8,
@@ -10,13 +11,15 @@ module rx_mac#(
     input logic   i_clk,
     input logic   i_reset_n,
 
-    // XGMII INput Interface
+    // XGMII Input Interface
     input logic [XGMII_DATA_WIDTH-1:0]      i_xgmii_data,
     input logic [XGMII_CTRL_WIDTH-1:0]      i_xgmii_ctrl,
     input logic                             i_xgmii_valid,
 
+    // Output Stream Interface - NOT AXI STREAM
     output logic [O_DATA_WIDTH-1:0]         o_data,
     output logic [O_DATA_KEEP_WIDTH-1:0]    o_data_keep,
+    output logic                            o_data_last,
     output logic                            o_data_valid,
     output logic                            o_data_err
 );
@@ -70,7 +73,7 @@ always_ff @(posedge i_clk)
 state_t                         state_reg = IDLE;
 logic [O_DATA_WIDTH-1:0]        o_data_reg = {O_DATA_WIDTH{1'b0}};
 logic [O_DATA_KEEP_WIDTH-1:0]   o_data_keep_reg = {O_DATA_KEEP_WIDTH{1'b0}};
-logic [O_DATA_WIDTH-1:0]        o_data_temp_reg = '0;
+logic                           o_data_tlast_reg = 1'b0;
 logic                           o_data_valid_reg = 1'b0;
 logic                           o_data_err_reg = 1'b0;
 logic [CNTR_WIDTH-1:0]          data_cntr = '0;
@@ -82,10 +85,12 @@ always_ff@(posedge i_clk) begin
         data_cntr <= '0;
         o_data_valid_reg <= 1'b0;
         o_data_err_reg <= 1'b0;
+        o_data_tlast_reg <= 1'b0;
         sof <= 1'b0;
     end else begin
 
         sof <= 1'b0;
+        o_data_tlast_reg <= 1'b0;
 
         o_data_reg <= xgmii_data_pipe[(2*XGMII_DATA_WIDTH)-1 -: O_DATA_WIDTH];
         o_data_keep_reg <= {O_DATA_KEEP_WIDTH{1'b0}};
@@ -126,6 +131,7 @@ always_ff@(posedge i_clk) begin
                         state_reg <= IDLE;
                     end else begin
                         state_reg <= CRC;
+                        o_data_tlast_reg <= 1'b1;
                     end
 
                 end
@@ -167,7 +173,8 @@ end
 
 crc32#(
     .DATA_WIDTH(XGMII_DATA_WIDTH),
-    .CRC_WIDTH(CRC_WIDTH)
+    .CRC_WIDTH(CRC_WIDTH),
+    .SIMULATION(SIMULATION)
 ) CRC_Slicing_by_4 (
     .i_clk(i_clk),
     .i_data(crc_data_in),
@@ -186,5 +193,6 @@ assign o_data = o_data_reg;
 assign o_data_keep = o_data_keep_reg;
 assign o_data_valid = o_data_valid_reg;
 assign o_data_err = o_data_err_reg;
+assign o_data_last = o_data_tlast_reg;
 
 endmodule

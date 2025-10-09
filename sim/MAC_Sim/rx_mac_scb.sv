@@ -1,5 +1,5 @@
 `include "mac_pkg.sv"
-`include "../Common/scoreboard_base.sv"
+//`include "../Common/scoreboard_base.sv"
 
 import mac_pkg::*;
 

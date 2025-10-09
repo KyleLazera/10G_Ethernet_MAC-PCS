@@ -3,6 +3,7 @@
 module crc32#(
     parameter DATA_WIDTH = 32,
     parameter CRC_WIDTH = 32,
+    parameter SIMULATION = 0,
 
     parameter DATA_BYTES = DATA_WIDTH/8
 )(
@@ -29,13 +30,24 @@ logic [LUT_WIDTH-1:0] lut_1 [LUT_DEPTH-1:0];
 logic [LUT_WIDTH-1:0] lut_2 [LUT_DEPTH-1:0]; 
 logic [LUT_WIDTH-1:0] lut_3 [LUT_DEPTH-1:0]; 
 
+generate 
+    if (SIMULATION) begin
+        initial begin
+            $readmemh("table0.txt", lut_0);
+            $readmemh("table1.txt", lut_1);
+            $readmemh("table2.txt", lut_2);
+            $readmemh("table3.txt", lut_3);            
+        end
+    end else begin
+        initial begin
+            $readmemh("../software/table0.txt", lut_0);
+            $readmemh("../software/table1.txt", lut_1);
+            $readmemh("../software/table2.txt", lut_2);
+            $readmemh("../software/table3.txt", lut_3);            
+        end
+    end
+endgenerate 
 
-initial begin
-    $readmemh("../software/table0.txt", lut_0);
-    $readmemh("../software/table1.txt", lut_1);
-    $readmemh("../software/table2.txt", lut_2);
-    $readmemh("../software/table3.txt", lut_3);            
-end
 
 /* -------------- Isolate Input Bytes -------------- */
 

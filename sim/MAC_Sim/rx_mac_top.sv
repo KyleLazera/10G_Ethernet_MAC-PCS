@@ -4,7 +4,7 @@
 
 module rx_mac_top;
 
-    import mac_pkg::*;
+    //import mac_pkg::*;
 
     /* Parameters */
 
@@ -45,7 +45,8 @@ module rx_mac_top;
     /* DUT Loop back ans instantiation*/
     rx_mac #(
         .XGMII_DATA_WIDTH(XGMII_DATA_WIDTH),
-        .O_DATA_WIDTH(O_DATA_WIDTH)
+        .O_DATA_WIDTH(O_DATA_WIDTH),
+        .SIMULATION(1)
     ) RX_DUT (
         .i_clk(i_clk),
         .i_reset_n(i_reset_n),
@@ -60,7 +61,8 @@ module rx_mac_top;
 
     tx_mac #(
         .XGMII_DATA_WIDTH(DATA_WIDTH),
-        .XGMII_CTRL_WIDTH(CTRL_WIDTH)
+        .XGMII_CTRL_WIDTH(CTRL_WIDTH),
+        .SIMULATION(1)
     ) TX_DUT (
         .i_clk(i_clk),
         .i_reset_n(i_reset_n),
@@ -72,11 +74,11 @@ module rx_mac_top;
         .i_xgmii_pause(xgmii_if_inst.i_xgmii_pause),
 
         // AXI-Stream Interface
-        .s_axis_tdata(axi_if.s_axis_tdata),
-        .s_axis_tkeep(axi_if.s_axis_tkeep),
-        .s_axis_tvalid(axi_if.s_axis_tvalid),
-        .s_axis_tlast(axi_if.s_axis_tlast),
-        .s_axis_trdy(axi_if.s_axis_trdy)
+        .s_axis_tdata(axi_if.m_axis_tdata),
+        .s_axis_tkeep(axi_if.m_axis_tkeep),
+        .s_axis_tvalid(axi_if.m_axis_tvalid),
+        .s_axis_tlast(axi_if.m_axis_tlast),
+        .s_axis_trdy(axi_if.m_axis_trdy)
     );
 
     // Loopback XGMII signals
@@ -153,6 +155,7 @@ module rx_mac_top;
 
     initial begin
         xgmii_if_inst.init_xgmii();
+        axi_if.init_axi_stream();
 
         // Wait for reset to be asserted again
         @(posedge i_reset_n);

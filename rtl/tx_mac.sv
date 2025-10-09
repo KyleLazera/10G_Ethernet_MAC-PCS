@@ -9,6 +9,7 @@
 module tx_mac #(
     parameter XGMII_DATA_WIDTH = 32,
     parameter XGMII_CTRL_WIDTH = 4,
+    parameter SIMULATION = 0,
     
     parameter AXIS_KEEP_WIDTH = XGMII_DATA_WIDTH/8
 )(
@@ -108,7 +109,8 @@ end
 
 crc32#(
     .DATA_WIDTH(XGMII_DATA_WIDTH),
-    .CRC_WIDTH(32)
+    .CRC_WIDTH(32),
+    .SIMULATION(SIMULATION)
 ) CRC_Slicing_by_4 (
     .i_clk(i_clk),
     .i_data(crc_data_in),
@@ -169,7 +171,7 @@ always_ff @(posedge i_clk) begin
                 // We can populate the data pipe with the preamble and SFD once the s_tx_valid
                 // is high (master has data to send) and xgmii_valid pipe is high (we are
                 // not in a paused state)
-                if(s_axis_tvalid && xgmii_valid_pipe[1]) begin
+                if(s_axis_tvalid && xgmii_valid_pipe[2]) begin
                     data_pipe <= {ETH_SFD, {6{ETH_HDR}}, XGMII_START};
                     ctrl_pipe <= 8'h01;
 
@@ -181,10 +183,12 @@ always_ff @(posedge i_clk) begin
             DATA: begin
                 s_axis_trdy_reg <= !i_xgmii_pause;
 
-                data_pipe <= {decoded_xgmii_data, data_pipe[(2*XGMII_DATA_WIDTH)-1 -: 32]};
-                ctrl_pipe <= {4'h0, ctrl_pipe[(2*XGMII_CTRL_WIDTH)-1 -: 4]};
+                if (xgmii_valid_pipe[2]) begin
+                    data_pipe <= {decoded_xgmii_data, data_pipe[(2*XGMII_DATA_WIDTH)-1 -: 32]};
+                    ctrl_pipe <= {4'h0, ctrl_pipe[(2*XGMII_CTRL_WIDTH)-1 -: 4]};
+                end
 
-                if (s_axis_tlast) begin
+                if (s_axis_tlast & s_axis_trdy) begin
                     s_axis_trdy_reg <= 1'b0;
                     // Before transitioning to the next state, we want to latch how many bytes
                     // are valid in the last data word. This is used to determine where to insert
@@ -254,7 +258,7 @@ end
 /* ---------------- Output Logic ---------------- */ 
 assign o_xgmii_txd = data_pipe[31:0];
 assign o_xgmii_ctrl = ctrl_pipe[3:0];
-assign o_xgmii_valid = xgmii_valid_pipe[0];
+assign o_xgmii_valid = xgmii_valid_pipe[2];
 
 assign s_axis_trdy = s_axis_trdy_reg;
 

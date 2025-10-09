@@ -1,7 +1,8 @@
 
 module eth_10g_top #(
     parameter DATA_WIDTH = 32,
-    parameter CTRL_WIDTH = DATA_WIDTH/8
+    parameter CTRL_WIDTH = DATA_WIDTH/8,
+    parameter SIMULATION = 0
 )(
     input logic                     i_tx_clk,
     input logic                     i_tx_reset_n,
@@ -22,6 +23,7 @@ module eth_10g_top #(
     /* RX MAC Interface */
     output logic [DATA_WIDTH-1:0]   o_data,
     output logic [CTRL_WIDTH-1:0]   o_data_keep,
+    output logic                    o_data_last,
     output logic                    o_data_valid,
     output logic                    o_data_err,
 
@@ -44,7 +46,8 @@ logic                   rx_mac_xgmii_valid;
 
 mac #(
     .DATA_WIDTH(DATA_WIDTH),
-    .CTRL_WIDTH(CTRL_WIDTH)
+    .CTRL_WIDTH(CTRL_WIDTH),
+    .SIMULATION(SIMULATION)
 ) eth_mac (
     /* TX MAC Signals */
     .i_tx_clk(i_tx_clk),
@@ -71,6 +74,7 @@ mac #(
 
     .o_data(o_data),
     .o_data_keep(o_data_keep),
+    .o_data_last(o_data_last),
     .o_data_valid(o_data_valid),
     .o_data_err(o_data_err)
 );

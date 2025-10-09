@@ -1,6 +1,4 @@
-`include "../Common/scoreboard_base.sv"
 `include "crc_pkg.sv"
-
 
 module crc_top;
 
