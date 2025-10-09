@@ -1,6 +1,6 @@
 `include "../Common/axi_stream_if.sv"
 `include "../MAC_Sim/mac_pkg.sv"
-`include "../Common/scoreboard_base.sv"
+`include "../MAC_Sim/rx_mac_scb.sv"
 
 module eth_top;
 
@@ -32,7 +32,7 @@ module eth_top;
 
     axi_stream_t tx_data[$], rx_data[$];
 
-    scoreboard_base scb = new();
+    rx_mac_scb scb = new();
 
     /* DUT Instantiation */
     eth_10g_top #(
@@ -88,16 +88,25 @@ module eth_top;
 
         axi_stream_t data;
 
-        if (o_data_keep != 4'h0 && o_data_valid) begin
-            data.axis_tdata = o_data;
-            data.axis_tvalid = o_data_valid;
-            data.axis_tlast = o_data_last;
-            data.axis_tkeep = o_data_keep;
-            rx_data.push_front(data);
+        while(!o_data_last) begin
+            if (o_data_keep != 4'h0 && o_data_valid) begin
+                data.axis_tdata = o_data;
+                data.axis_tvalid = o_data_valid;
+                data.axis_tlast = o_data_last;
+                data.axis_tkeep = o_data_keep;
+                rx_data.push_front(data);
+            end
+
+            @(posedge clk);
         end
 
+        data.axis_tdata = o_data;
+        data.axis_tvalid = o_data_valid;
+        data.axis_tlast = o_data_last;
+        data.axis_tkeep = o_data_keep;
+        rx_data.push_front(data);
         @(posedge clk);
-
+        
     endtask : sample_data
 
     /* Drive Stimulus */
@@ -118,30 +127,24 @@ module eth_top;
         repeat(150)
             @(posedge clk);
 
-        repeat(2) begin
+        repeat(20) begin
+
+            generate_tx_data_stream(tx_data);
+
+            $display("Size of TX DATA: %0d", tx_data.size());
 
             fork
                 begin
-                    generate_tx_data_stream(tx_data);
                     axi_if.drive_data_axi_stream(tx_data);
-                    repeat(16)
-                        @(posedge clk);
+                    $display("Completed data transmission");
                 end
                 begin
-                    while(1)
-                        sample_data(rx_data);     
+                    sample_data(rx_data);    
+                    $display("Completed data Sampling"); 
                 end
-            join_any
+            join
 
-            $display("TX Data Size: %0d, RX Data Size: %0d", tx_data.size(), rx_data.size());
-
-            //foreach(tx_data[i])
-            //    $display("TX Data: %0h, RX Data: %0h", tx_data[i].axis_tdata, rx_data[i].axis_tdata);
-
-            tx_data.delete();
-            rx_data.delete();
-
-            $display("TX Data Size: %0d, RX Data Size: %0d", tx_data.size(), rx_data.size());
+            scb.verify_data(rx_data, tx_data);
 
         end
 

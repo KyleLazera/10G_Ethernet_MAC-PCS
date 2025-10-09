@@ -55,12 +55,12 @@ logic                           terminate_pos[3:0];
 logic                           terminate_pos_reg[3:0];
 
 // Combintational Decoding Flags
-assign start_condition = (xgmii_data_pipe[(2*XGMII_DATA_WIDTH)-1:0] == ETH_START) && (xgmii_ctrl_pipe[(2*XGMII_CTRL_WIDTH)-1:0] == 8'h1) && (xgmii_valid_pipe == 3'b111);
-assign stop_condition = |xgmii_ctrl_pipe[(3*XGMII_CTRL_WIDTH)-1 -: XGMII_CTRL_WIDTH];
+assign start_condition = (xgmii_data_pipe[(2*XGMII_DATA_WIDTH)-1:0] == ETH_START) && (xgmii_ctrl_pipe[(2*XGMII_CTRL_WIDTH)-1:0] == 8'h1) && (xgmii_valid_pipe[1:0] == 2'b11);
+assign stop_condition = |i_xgmii_ctrl;
 
 always_comb begin
     for(int i = 0; i < 4; i++) 
-        terminate_pos[i] = (xgmii_data_pipe[(2*XGMII_DATA_WIDTH)+(i*8) +: 8] == 8'hFD) && xgmii_ctrl_pipe[(2*XGMII_CTRL_WIDTH)+i];
+        terminate_pos[i] = (i_xgmii_data[(i*8) +: 8] == 8'hFD) && i_xgmii_ctrl[i];
 end
 
 // Terminate Flag Pipeline
@@ -109,18 +109,6 @@ always_ff@(posedge i_clk) begin
             DATA: begin
 
                 o_data_keep_reg <= ~xgmii_ctrl_pipe[(2*XGMII_CTRL_WIDTH)-1 -: O_DATA_KEEP_WIDTH];
-
-                if (terminate_pos[0])
-                    o_data_keep_reg <= {O_DATA_KEEP_WIDTH{1'b0}};
-                
-                if (terminate_pos[1])
-                    o_data_keep_reg <= {{(O_DATA_KEEP_WIDTH-1){1'b0}}, 1'b1};
-
-                if (terminate_pos[2])
-                    o_data_keep_reg <= {{(O_DATA_KEEP_WIDTH-2){1'b0}}, 2'b11};
-
-                if (terminate_pos[3])
-                    o_data_keep_reg <= {{(O_DATA_KEEP_WIDTH-3){1'b0}}, 3'b111};
                 
                 if (xgmii_valid_pipe[1] && (data_cntr < (MIN_NUM_WORDS - 1)))
                     data_cntr <= data_cntr + 1;
@@ -131,23 +119,33 @@ always_ff@(posedge i_clk) begin
                         state_reg <= IDLE;
                     end else begin
                         state_reg <= CRC;
-                        o_data_tlast_reg <= 1'b1;
+                        o_data_tlast_reg <= terminate_pos[0];
                     end
 
                 end
             end
             CRC: begin
-                if (terminate_pos_reg[0])
-                    o_data_err_reg <= (xgmii_data_pipe[XGMII_DATA_WIDTH-1 -: XGMII_DATA_WIDTH] != crc_data_out);
+                if (terminate_pos_reg[0]) begin
+                    o_data_err_reg <= (xgmii_data_pipe[(2*XGMII_DATA_WIDTH)-1 -: XGMII_DATA_WIDTH] != crc_data_out);
+                end
                 
-                if (terminate_pos_reg[1])
-                    o_data_err_reg <= (xgmii_data_pipe[(XGMII_DATA_WIDTH + 8)-1 -: XGMII_DATA_WIDTH] != crc_data_out);
+                if (terminate_pos_reg[1]) begin
+                    o_data_tlast_reg <= 1'b1;
+                    o_data_keep_reg <= {{(O_DATA_KEEP_WIDTH-1){1'b0}}, 1'b1};
+                    o_data_err_reg <= (xgmii_data_pipe[((2*XGMII_DATA_WIDTH) + 8)-1 -: XGMII_DATA_WIDTH] != crc_data_out);
+                end
 
-                if (terminate_pos_reg[2])
-                    o_data_err_reg <= (xgmii_data_pipe[(XGMII_DATA_WIDTH + 16)-1 -: XGMII_DATA_WIDTH] != crc_data_out);
+                if (terminate_pos_reg[2]) begin
+                    o_data_tlast_reg <= 1'b1;
+                    o_data_keep_reg <= {{(O_DATA_KEEP_WIDTH-2){1'b0}}, 2'b11};
+                    o_data_err_reg <= (xgmii_data_pipe[((2*XGMII_DATA_WIDTH) + 16)-1 -: XGMII_DATA_WIDTH] != crc_data_out);
+                end
 
-                if (terminate_pos_reg[3])
-                    o_data_err_reg <= (xgmii_data_pipe[(XGMII_DATA_WIDTH + 24)-1 -: XGMII_DATA_WIDTH] != crc_data_out);
+                if (terminate_pos_reg[3]) begin
+                    o_data_tlast_reg <= 1'b1;
+                    o_data_keep_reg <= {{(O_DATA_KEEP_WIDTH-3){1'b0}}, 3'b111};
+                    o_data_err_reg <= (xgmii_data_pipe[((2*XGMII_DATA_WIDTH) + 24)-1 -: XGMII_DATA_WIDTH] != crc_data_out);
+                end
 
                 state_reg <= IDLE;
             end

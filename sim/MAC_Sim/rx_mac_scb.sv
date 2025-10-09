@@ -1,5 +1,8 @@
+`ifndef RX_MAC_SCB
+`define RX_MAC_SCB
+
 `include "mac_pkg.sv"
-//`include "../Common/scoreboard_base.sv"
+`include "../Common/scoreboard_base.sv"
 
 import mac_pkg::*;
 
@@ -75,9 +78,15 @@ class rx_mac_scb extends scoreboard_base;
         end else begin
             $display("MISMATCH of the output data. Expected: %0d Actual: %0d", ref_data.size(), output_data.size());
             record_packet_failure();
+
+            foreach(ref_data[i])
+                $display("Expected: %0h, Actual: %0h", ref_data[i].axis_tdata, output_data[i].axis_tdata);
+
             $stop;
         end 
         
     endfunction : verify_data
 
 endclass : rx_mac_scb
+
+`endif // RX_MAC_SCB

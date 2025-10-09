@@ -175,7 +175,7 @@ always_ff @(posedge i_clk) begin
                     data_pipe <= {ETH_SFD, {6{ETH_HDR}}, XGMII_START};
                     ctrl_pipe <= 8'h01;
 
-                    s_axis_trdy_reg <= 1'b1;
+                    s_axis_trdy_reg <= !i_xgmii_pause;
                     state_reg <= DATA;
                 end  
                     
