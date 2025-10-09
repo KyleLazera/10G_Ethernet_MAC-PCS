@@ -102,7 +102,7 @@ logic [AXIS_KEEP_WIDTH-1:0] crc_data_valid = 1'b0;
 always_ff@(posedge i_clk) begin
     if (!i_reset_n | sof) begin
         crc_state <= 32'hFFFFFFFF;
-    end else if (|decoded_axi_tkeep && xgmii_valid_pipe[1]) begin
+    end else if (|decoded_axi_tkeep && xgmii_valid_pipe[0]) begin
         crc_state <= crc_state_next;
     end
 end
@@ -125,7 +125,7 @@ state_t                             state_reg = IDLE;
 logic [4:0]                         ifg_cntr = '0;
 logic [(2*XGMII_DATA_WIDTH)-1:0]    data_pipe = {8{8'h07}};
 logic [(2*XGMII_CTRL_WIDTH)-1:0]    ctrl_pipe = 8'hFF;
-logic [2:0]                         xgmii_valid_pipe = {3{1'b1}};
+logic [1:0]                         xgmii_valid_pipe = {2{1'b1}};
 logic [3:0]                         valid_bytes = 4'b1111;
 logic                               s_axis_trdy_reg = 1'b0;
 logic                               term_set = 1'b0;
@@ -142,7 +142,7 @@ always_ff @(posedge i_clk) begin
         // Init data to idle frames 
         data_pipe <= {8{8'h07}};
         ctrl_pipe <= 8'hFF;
-        xgmii_valid_pipe <= {3{1'b1}};
+        xgmii_valid_pipe <= {2{1'b1}};
 
         ifg_cntr <= '0;
         data_cntr <= '0;
@@ -158,7 +158,7 @@ always_ff @(posedge i_clk) begin
 
         s_axis_trdy_reg <= 1'b0;
 
-        xgmii_valid_pipe <= {!i_xgmii_pause, xgmii_valid_pipe[2:1]};
+        xgmii_valid_pipe <= {!i_xgmii_pause, xgmii_valid_pipe[1]};
 
         
         case(state_reg)
@@ -171,7 +171,7 @@ always_ff @(posedge i_clk) begin
                 // We can populate the data pipe with the preamble and SFD once the s_tx_valid
                 // is high (master has data to send) and xgmii_valid pipe is high (we are
                 // not in a paused state)
-                if(s_axis_tvalid && xgmii_valid_pipe[2]) begin
+                if(s_axis_tvalid && xgmii_valid_pipe[1]) begin
                     data_pipe <= {ETH_SFD, {6{ETH_HDR}}, XGMII_START};
                     ctrl_pipe <= 8'h01;
 
@@ -183,7 +183,7 @@ always_ff @(posedge i_clk) begin
             DATA: begin
                 s_axis_trdy_reg <= !i_xgmii_pause;
 
-                if (xgmii_valid_pipe[2]) begin
+                if (xgmii_valid_pipe[1]) begin
                     data_pipe <= {decoded_xgmii_data, data_pipe[(2*XGMII_DATA_WIDTH)-1 -: 32]};
                     ctrl_pipe <= {4'h0, ctrl_pipe[(2*XGMII_CTRL_WIDTH)-1 -: 4]};
                 end
@@ -258,7 +258,7 @@ end
 /* ---------------- Output Logic ---------------- */ 
 assign o_xgmii_txd = data_pipe[31:0];
 assign o_xgmii_ctrl = ctrl_pipe[3:0];
-assign o_xgmii_valid = xgmii_valid_pipe[2];
+assign o_xgmii_valid = xgmii_valid_pipe[1];
 
 assign s_axis_trdy = s_axis_trdy_reg;
 

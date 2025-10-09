@@ -166,7 +166,7 @@ logic [O_DATA_KEEP_WIDTH-1:0]   crc_data_valid;
 always_ff@(posedge i_clk) begin
     if (!i_reset_n | sof) begin
         crc_state <= 32'hFFFFFFFF;
-    end else if (|o_data_keep_reg) begin
+    end else if (|o_data_keep_reg & xgmii_valid_pipe[1]) begin
         crc_state <= crc_state_next;
     end
 end

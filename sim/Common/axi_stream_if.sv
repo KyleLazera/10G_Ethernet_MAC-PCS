@@ -10,7 +10,7 @@ interface axi_stream_if
     input logic reset_n
 );
 
-import mac_pkg::*;
+import mac_pkg::axi_stream_t;
 
 localparam KEEP_WIDTH = DATA_WIDTH/8;
 
@@ -41,7 +41,7 @@ task init_axi_stream();
     s_axis_trdy = 1'b0;
 endtask: init_axi_stream
 
-task drive_data_axi_stream(ref axi_stream_t data_queue[$]);
+task drive_data_axi_stream(input axi_stream_t data_queue[$]);
 
     axi_stream_t axi_pkt;
     int data_size = data_queue.size();

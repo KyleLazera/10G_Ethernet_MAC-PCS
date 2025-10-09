@@ -1,5 +1,6 @@
 `include "../Common/axi_stream_if.sv"
 `include "../MAC_Sim/mac_pkg.sv"
+`include "../Common/scoreboard_base.sv"
 
 module eth_top;
 
@@ -13,6 +14,12 @@ module eth_top;
     logic clk;
     logic tx_reset_n, rx_reset_n;
 
+    logic [DATA_WIDTH-1:0]   o_data;
+    logic [CTRL_WIDTH-1:0]   o_data_keep;
+    logic                    o_data_last;
+    logic                    o_data_valid;
+    logic                    o_data_err;
+
     logic [DATA_WIDTH-1:0] tx_rx_loopback;
 
     /* Interface Instantiation */
@@ -24,7 +31,8 @@ module eth_top;
     );
 
     axi_stream_t tx_data[$], rx_data[$];
-    axi_stream_t idle_block[$];
+
+    scoreboard_base scb = new();
 
     /* DUT Instantiation */
     eth_10g_top #(
@@ -49,11 +57,11 @@ module eth_top;
         .i_rx_reset_n(rx_reset_n),
 
         /* RX MAC Interface */
-        .o_data(axi_if.s_axis_tdata),
-        .o_data_keep(axi_if.s_axis_tkeep),
-        .o_data_last(axi_if.s_axis_tlast),
-        .o_data_valid(axi_if.s_axis_tvalid),
-        .o_data_err(),
+        .o_data(o_data),
+        .o_data_keep(o_data_keep),
+        .o_data_last(o_data_last),
+        .o_data_valid(o_data_valid),
+        .o_data_err(o_data_err),
 
         /* RX Transceiever Interface */
         .pcs_rx_gearbox_data(tx_rx_loopback)
@@ -76,6 +84,22 @@ module eth_top;
         @(posedge clk);
     end
 
+    task sample_data(ref axi_stream_t rx_data[$]);
+
+        axi_stream_t data;
+
+        if (o_data_keep != 4'h0 && o_data_valid) begin
+            data.axis_tdata = o_data;
+            data.axis_tvalid = o_data_valid;
+            data.axis_tlast = o_data_last;
+            data.axis_tkeep = o_data_keep;
+            rx_data.push_front(data);
+        end
+
+        @(posedge clk);
+
+    endtask : sample_data
+
     /* Drive Stimulus */
 
     initial begin
@@ -84,16 +108,45 @@ module eth_top;
         // Wait for Reset
         @(posedge tx_reset_n);
 
-        repeat(100)
+        /* -----------------------------------------------------------------------
+        // Repeat positive clock edges for 150 cycles. During this time
+        // the TX MAC will transmit only idle frames. These idle frames will
+        // be looped back to the RX PCS and MAC. Sending multiple idle frames
+        // allows the lock state module to be set first, ensuring the rx gearbox
+        // is aligned.
+        ------------------------------------------------------------------------- */
+        repeat(150)
             @(posedge clk);
 
-        for(int i = 0; i < 200; i++) begin
-            generate_tx_data_stream(tx_data);
-            $display("Iteration: %0d Size of Data Queue: %0d", i, tx_data.size());
-            axi_if.drive_data_axi_stream(tx_data);
+        repeat(2) begin
+
+            fork
+                begin
+                    generate_tx_data_stream(tx_data);
+                    axi_if.drive_data_axi_stream(tx_data);
+                    repeat(16)
+                        @(posedge clk);
+                end
+                begin
+                    while(1)
+                        sample_data(rx_data);     
+                end
+            join_any
+
+            $display("TX Data Size: %0d, RX Data Size: %0d", tx_data.size(), rx_data.size());
+
+            //foreach(tx_data[i])
+            //    $display("TX Data: %0h, RX Data: %0h", tx_data[i].axis_tdata, rx_data[i].axis_tdata);
+
+            tx_data.delete();
+            rx_data.delete();
+
+            $display("TX Data Size: %0d, RX Data Size: %0d", tx_data.size(), rx_data.size());
+
         end
 
         #100;
+        scb.print_summary();
         $finish;
 
     end
