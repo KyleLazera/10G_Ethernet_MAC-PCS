@@ -146,6 +146,9 @@ module rx_mac_top;
                 end
             join
 
+            // Clear the tx queue
+            tx_mac_data_queue.delete();
+
             scb.verify_data(output_data, ref_data);
         end
 

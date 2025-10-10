@@ -42,8 +42,10 @@ logic [(3*XGMII_CTRL_WIDTH)-1:0]     xgmii_ctrl_pipe = '0;
 logic [2:0]                          xgmii_valid_pipe = '0;
 
 always_ff @(posedge i_clk) begin
-    xgmii_data_pipe <= {i_xgmii_data, xgmii_data_pipe[(3*XGMII_DATA_WIDTH)-1 : XGMII_DATA_WIDTH]};
-    xgmii_ctrl_pipe <= {i_xgmii_ctrl, xgmii_ctrl_pipe[(3*XGMII_CTRL_WIDTH)-1 : XGMII_CTRL_WIDTH]};
+    if (i_xgmii_valid) begin
+        xgmii_data_pipe <= {i_xgmii_data, xgmii_data_pipe[(3*XGMII_DATA_WIDTH)-1 : XGMII_DATA_WIDTH]};
+        xgmii_ctrl_pipe <= {i_xgmii_ctrl, xgmii_ctrl_pipe[(3*XGMII_CTRL_WIDTH)-1 : XGMII_CTRL_WIDTH]};
+    end
     xgmii_valid_pipe <= {i_xgmii_valid, xgmii_valid_pipe[2:1]};
 end
 
@@ -51,22 +53,22 @@ end
 
 logic                           start_condition;
 logic                           stop_condition;
-logic                           terminate_pos[3:0];
-logic                           terminate_pos_reg[3:0];
-
-// Combintational Decoding Flags
-assign start_condition = (xgmii_data_pipe[(2*XGMII_DATA_WIDTH)-1:0] == ETH_START) && (xgmii_ctrl_pipe[(2*XGMII_CTRL_WIDTH)-1:0] == 8'h1) && (xgmii_valid_pipe[1:0] == 2'b11);
-assign stop_condition = |i_xgmii_ctrl;
+logic [3:0]                     terminate_pos;
+logic [3:0]                     terminate_pos_reg;
 
 always_comb begin
     for(int i = 0; i < 4; i++) 
-        terminate_pos[i] = (i_xgmii_data[(i*8) +: 8] == 8'hFD) && i_xgmii_ctrl[i];
+        terminate_pos[i] = (i_xgmii_data[(i*8) +: 8] == 8'hFD) && i_xgmii_ctrl[i] && i_xgmii_valid;
 end
 
 // Terminate Flag Pipeline
 always_ff @(posedge i_clk)
     for(int i = 0; i < 4; i++)
         terminate_pos_reg[i] <= terminate_pos[i];
+
+// Combintational Decoding Flags
+assign start_condition = (xgmii_data_pipe[(2*XGMII_DATA_WIDTH)-1:0] == ETH_START) && (xgmii_ctrl_pipe[(2*XGMII_CTRL_WIDTH)-1:0] == 8'h1);
+assign stop_condition = terminate_pos[0] | terminate_pos[1] | terminate_pos[2] | terminate_pos[3];
 
 /* ---------------- State Machine Logic ---------------- */
 
@@ -94,24 +96,47 @@ always_ff@(posedge i_clk) begin
 
         o_data_reg <= xgmii_data_pipe[(2*XGMII_DATA_WIDTH)-1 -: O_DATA_WIDTH];
         o_data_keep_reg <= {O_DATA_KEEP_WIDTH{1'b0}};
-        o_data_valid_reg <= xgmii_valid_pipe[1];
+        o_data_valid_reg <= xgmii_valid_pipe[2];
+
+        crc_data_valid <= '0;
 
         case(state_reg)
             IDLE: begin
 
                 o_data_err_reg <= 1'b0;
+                sof <= 1'b1;
                 
                 if (start_condition) begin
-                    sof <= 1'b1;
+                    sof <= 1'b0;
+                    crc_data_in <= xgmii_data_pipe[(3*XGMII_DATA_WIDTH)-1 -: XGMII_DATA_WIDTH];
+                    crc_data_valid <= ~xgmii_ctrl_pipe[(3*XGMII_CTRL_WIDTH)-1 -: O_DATA_KEEP_WIDTH] & {8{i_xgmii_valid}};
                     state_reg <= DATA;
                 end
             end
             DATA: begin
-
                 o_data_keep_reg <= ~xgmii_ctrl_pipe[(2*XGMII_CTRL_WIDTH)-1 -: O_DATA_KEEP_WIDTH];
+
+                crc_data_in <= xgmii_data_pipe[(3*XGMII_DATA_WIDTH)-1 -: XGMII_DATA_WIDTH];
+                crc_data_valid <= ~xgmii_ctrl_pipe[(3*XGMII_CTRL_WIDTH)-1 -: O_DATA_KEEP_WIDTH] & {8{i_xgmii_valid}};
                 
                 if (xgmii_valid_pipe[1] && (data_cntr < (MIN_NUM_WORDS - 1)))
                     data_cntr <= data_cntr + 1;
+            
+                if (terminate_pos[0]) begin
+                    crc_data_valid <= {{(O_DATA_KEEP_WIDTH){1'b0}}};
+                end
+
+                if (terminate_pos[1]) begin
+                    crc_data_valid <= {{(O_DATA_KEEP_WIDTH-1){1'b0}}, 1'b1};
+                end
+
+                if (terminate_pos[2]) begin
+                    crc_data_valid <= {{(O_DATA_KEEP_WIDTH-2){1'b0}}, 2'b11};
+                end
+
+                if (terminate_pos[3]) begin
+                    crc_data_valid <= {{(O_DATA_KEEP_WIDTH-3){1'b0}}, 3'b111};
+                end
 
                 if (stop_condition) begin
                     if (data_cntr < (MIN_NUM_WORDS - 1)) begin
@@ -157,14 +182,14 @@ end
 
 logic                           sof = 1'b0;
 logic [CRC_WIDTH-1:0]           crc_state = 32'hFFFFFFFF;
-logic [XGMII_DATA_WIDTH-1:0]    crc_data_out, crc_data_in;
+logic [XGMII_DATA_WIDTH-1:0]    crc_data_out, crc_data_in = '0;
 logic [CRC_WIDTH-1:0]           crc_state_next;
-logic [O_DATA_KEEP_WIDTH-1:0]   crc_data_valid;
+logic [O_DATA_KEEP_WIDTH-1:0]   crc_data_valid = '0;
 
 always_ff@(posedge i_clk) begin
     if (!i_reset_n | sof) begin
         crc_state <= 32'hFFFFFFFF;
-    end else if (|o_data_keep_reg & xgmii_valid_pipe[1]) begin
+    end else if (|crc_data_valid) begin
         crc_state <= crc_state_next;
     end
 end
@@ -181,9 +206,6 @@ crc32#(
     .o_crc(crc_data_out),
     .o_crc_state(crc_state_next)
 );
-
-assign crc_data_in = o_data_reg;
-assign crc_data_valid = o_data_keep_reg;
 
 /* ---------------- Output Logic ---------------- */
 

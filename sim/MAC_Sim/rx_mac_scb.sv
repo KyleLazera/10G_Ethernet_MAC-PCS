@@ -79,7 +79,7 @@ class rx_mac_scb extends scoreboard_base;
             $display("MISMATCH of the output data. Expected: %0d Actual: %0d", ref_data.size(), output_data.size());
             record_packet_failure();
 
-            foreach(ref_data[i])
+            foreach(output_data[i])
                 $display("Expected: %0h, Actual: %0h", ref_data[i].axis_tdata, output_data[i].axis_tdata);
 
             $stop;
