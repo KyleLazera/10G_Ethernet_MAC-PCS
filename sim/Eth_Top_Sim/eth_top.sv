@@ -88,6 +88,9 @@ module eth_top;
 
         axi_stream_t data;
 
+        while(!o_data_valid)
+            @(posedge o_data_valid);
+
         while(!o_data_last) begin
             if (o_data_keep != 4'h0 && o_data_valid) begin
                 data.axis_tdata = o_data;
@@ -100,11 +103,13 @@ module eth_top;
             @(posedge clk);
         end
 
-        data.axis_tdata = o_data;
-        data.axis_tvalid = o_data_valid;
-        data.axis_tlast = o_data_last;
-        data.axis_tkeep = o_data_keep;
-        rx_data.push_front(data);
+        if (o_data_valid) begin
+            data.axis_tdata = o_data;
+            data.axis_tvalid = o_data_valid;
+            data.axis_tlast = o_data_last;
+            data.axis_tkeep = o_data_keep;
+            rx_data.push_front(data);
+        end
         @(posedge clk);
         
     endtask : sample_data
@@ -127,7 +132,7 @@ module eth_top;
         repeat(150)
             @(posedge clk);
 
-        repeat(20) begin
+        repeat(100) begin
 
             generate_tx_data_stream(tx_data);
 

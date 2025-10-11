@@ -92,6 +92,7 @@ always_ff@(posedge i_clk) begin
     end else begin
 
         sof <= 1'b0;
+
         o_data_tlast_reg <= 1'b0;
 
         o_data_reg <= xgmii_data_pipe[(2*XGMII_DATA_WIDTH)-1 -: O_DATA_WIDTH];
@@ -213,6 +214,6 @@ assign o_data = o_data_reg;
 assign o_data_keep = o_data_keep_reg;
 assign o_data_valid = o_data_valid_reg;
 assign o_data_err = o_data_err_reg;
-assign o_data_last = o_data_tlast_reg;
+assign o_data_last = (terminate_pos[0] & !xgmii_valid_pipe[2]) ? 1'b1 : o_data_tlast_reg;
 
 endmodule
