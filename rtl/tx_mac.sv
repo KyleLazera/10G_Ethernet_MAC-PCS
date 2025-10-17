@@ -137,7 +137,7 @@ always_ff @(posedge i_clk) begin
         sof <= 1'b0;
         term_set <= 1'b0;
 
-        valid_bytes <= 3'b1111;
+        valid_bytes <= 4'b1111;
 
         // Init data to idle frames 
         data_pipe <= {8{8'h07}};
@@ -149,12 +149,7 @@ always_ff @(posedge i_clk) begin
 
     end else begin
 
-        sof <= 1'b0;
-
-        // CRC Data Input
-        crc_data_in <= decoded_xgmii_data;
-        crc_data_valid <= decoded_axi_tkeep;
- 
+        sof <= 1'b0; 
 
         s_axis_trdy_reg <= 1'b0;
 
@@ -163,6 +158,9 @@ always_ff @(posedge i_clk) begin
         
         case(state_reg)
             IDLE: begin  
+
+                crc_data_in <= decoded_xgmii_data;
+                crc_data_valid <= decoded_axi_tkeep;
 
                 term_set <= 1'b0;     
                 ifg_cntr <= '0;                 
@@ -182,6 +180,9 @@ always_ff @(posedge i_clk) begin
             end
             DATA: begin
                 s_axis_trdy_reg <= !i_xgmii_pause;
+
+                crc_data_in <= decoded_xgmii_data;
+                crc_data_valid <= decoded_axi_tkeep;
 
                 if (xgmii_valid_pipe[1]) begin
                     data_pipe <= {decoded_xgmii_data, data_pipe[(2*XGMII_DATA_WIDTH)-1 -: 32]};

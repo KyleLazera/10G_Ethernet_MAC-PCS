@@ -45,6 +45,7 @@ always_ff @(posedge i_clk) begin
             sh_counter <= sh_counter + 1;
 
             if(sh_valid) begin
+
                 if(sh_counter == MAX_SH_CNTR) begin
                     sh_counter <= '0;
                     sh_invalid_cntr <= '0;

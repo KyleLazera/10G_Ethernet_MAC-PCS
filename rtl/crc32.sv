@@ -100,6 +100,8 @@ always_comb begin
         4'b0111: crc_next = crc_calc[2] ^ (i_crc_state >> 24);
         4'b0011: crc_next = crc_calc[1] ^ (i_crc_state >> 16);
         4'b0001: crc_next = crc_calc[0] ^ (i_crc_state >> 8);
+        // Default condition should never be met
+        default: crc_next = 4'b0000;
     endcase
 end
 
