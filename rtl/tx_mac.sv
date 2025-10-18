@@ -154,7 +154,6 @@ always_ff @(posedge i_clk) begin
         s_axis_trdy_reg <= 1'b0;
 
         xgmii_valid_pipe <= {!i_xgmii_pause, xgmii_valid_pipe[1]};
-
         
         case(state_reg)
             IDLE: begin  
@@ -189,17 +188,21 @@ always_ff @(posedge i_clk) begin
                     ctrl_pipe <= {4'h0, ctrl_pipe[(2*XGMII_CTRL_WIDTH)-1 -: 4]};
                 end
 
-                if (s_axis_tlast & s_axis_trdy) begin
-                    s_axis_trdy_reg <= 1'b0;
-                    // Before transitioning to the next state, we want to latch how many bytes
-                    // are valid in the last data word. This is used to determine where to insert
-                    // the CRC & terminate or padding bytes.
-                    valid_bytes <= decoded_axi_tkeep;
-                    state_reg <= (data_cntr < (MIN_NUM_WORDS-1)) ? PADDING : CRC;
-                end
+                if (s_axis_trdy) begin
 
-                if (data_cntr <= (MIN_NUM_WORDS-1) && s_axis_trdy) 
-                    data_cntr <= data_cntr + 1;
+                    if (data_cntr <= (MIN_NUM_WORDS-1)) 
+                        data_cntr <= data_cntr + 1;
+
+                    if (s_axis_tlast) begin
+                        s_axis_trdy_reg <= 1'b0;
+                        // Before transitioning to the next state, we want to latch how many bytes
+                        // are valid in the last data word. This is used to determine where to insert
+                        // the CRC & terminate or padding bytes.
+                        valid_bytes <= decoded_axi_tkeep;
+                        state_reg <= (data_cntr < (MIN_NUM_WORDS-1)) ? PADDING : CRC;
+                    end
+                    
+                end
             end
             PADDING: begin
                 data_pipe <= {decoded_xgmii_data, data_pipe[(2*XGMII_DATA_WIDTH)-1 -: 32]};
@@ -227,6 +230,7 @@ always_ff @(posedge i_clk) begin
                     end else  begin
                         data_pipe <= {crc_data_out, data_pipe[(2*XGMII_DATA_WIDTH)-1 -: 32]};
                         ctrl_pipe <= {4'b0, ctrl_pipe[(2*XGMII_CTRL_WIDTH)-1 -: 4]};
+                        term_set <= 1'b0;
                     end
 
                     state_reg <= IFG;

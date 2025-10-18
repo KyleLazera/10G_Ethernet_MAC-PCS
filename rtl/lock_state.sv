@@ -55,7 +55,7 @@ always_ff @(posedge i_clk) begin
             end else begin
                 sh_invalid_cntr <= sh_invalid_cntr + 1;
                 
-                if (sh_invalid_cntr == MAX_SH_INVALID | (!block_lock)) begin
+                if ((sh_invalid_cntr == MAX_SH_INVALID) | (!block_lock)) begin
                     sh_counter <= '0;
                     sh_invalid_cntr <= '0;
                     slip <= 1'b1;
