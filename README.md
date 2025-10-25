@@ -3,7 +3,7 @@
 This project implements a **10G Ethernet MAC/PCS** optimized for **minimal latency per byte of data**.  
 It builds upon my previous [UDP/IP Ethernet stack](https://github.com/KyleLazera/udp-ip-mac-core) and focuses on 10G Ethernet architecture — including 64b/66b encoding, scrambling, and gearbox interfacing with GTY transceivers.
 
-Project documentation can be found here: [10GGbps Ethernet Project Documentation](https://docs.google.com/document/d/1BccegNxokFsk6skow2dmSL8w7UbbWKO5YEqboq8Fin8/edit?tab=t.0)
+Project documentation can be found here: [10 Gbps Ethernet Project Documentation](https://docs.google.com/document/d/1BccegNxokFsk6skow2dmSL8w7UbbWKO5YEqboq8Fin8/edit?tab=t.0)
 
 ## Project Structure
 
@@ -34,16 +34,16 @@ Follow these steps to clone and build the project on your machine:
 1. **Clone the Repository**
     Use the following instruction to clone the project onto your local machine:
 
-    git clone https://github.com/KyleLazera/10gbs_ethernet_pcs_mac.git
+        ```git clone git@github.com:KyleLazera/10G_Ethernet_MAC-PCS.git```
 
-    Navigate to the local repo:
+    Navigate to the scripts folder within the local repo:
     
-    cd 10gbs_ethernet_pcs_mac
+        ```cd 10gbs_ethernet_pcs_mac/scripts```
 
 2. **Build the Project**
     Run the following command in the top level folder of the project:
 
-    ./build_project.sh
+    ```./build_project.sh```
 
     This script will do the following: 
 
@@ -57,4 +57,3 @@ Follow these steps to clone and build the project on your machine:
 
         Set the top-level module (pcs)
 
-        Prepare the design for synthesis and implementation
