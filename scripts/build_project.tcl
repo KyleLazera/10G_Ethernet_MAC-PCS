@@ -1,7 +1,7 @@
 
 set proj_name   10gbs_ethernet_pcs_mac
 set proj_dir    ./proj_dir
-set top_module  pcs
+set top_module  eth_10g_top.sv
 set part        xc7a35tcsg324-1
 
 # Create project in Vivado
