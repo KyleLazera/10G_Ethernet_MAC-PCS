@@ -8,11 +8,11 @@ Project documentation can be found here: [10 Gbps Ethernet Project Documentation
 ## Project Structure
 
 10gbs_ethernet_pcs_mac/
-├── build_project.tcl               # Vivado TCL build script
-├── build_project.sh                # Bash script that runs the TCL script
-├── rtl/                            # RTL source files (.sv)
-├── xdc/                            # Constraint files (.xdc)
-└── proj_dir/                       # Vivado project output directory (auto-generated)
+├── build_project.tcl # Vivado TCL build script
+├── build_project.sh # Bash script that runs the TCL script
+├── rtl/ # RTL source files (.sv)
+├── xdc/ # Constraint files (.xdc)
+└── proj_dir/ # Vivado project output directory (auto-generated)
 
 ## Requirements
 
