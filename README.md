@@ -34,11 +34,11 @@ Follow these steps to clone and build the project on your machine:
 1. **Clone the Repository**
     Use the following instruction to clone the project onto your local machine:
 
-        `git clone git@github.com:KyleLazera/10G_Ethernet_MAC-PCS.git`
+    `git clone git@github.com:KyleLazera/10G_Ethernet_MAC-PCS.git`
 
     Navigate to the scripts folder within the local repo:
     
-        `cd 10gbs_ethernet_pcs_mac/scripts`
+    `cd 10gbs_ethernet_pcs_mac/scripts`
 
 2. **Build the Project**
     Run the following command in the top level folder of the project:
